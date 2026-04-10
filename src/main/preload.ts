@@ -1,23 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  send: (channel: string, ...args: unknown[]) => {
-    const validChannels = ["ping"];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel, ...args);
-    }
+  minimize: () => ipcRenderer.send("window:minimize"),
+  maximize: () => ipcRenderer.send("window:maximize"),
+  close: () => ipcRenderer.send("window:close"),
+  isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+  onMaximize: (callback: () => void) => {
+    ipcRenderer.on("window:onMaximize", () => callback());
   },
-  on: (channel: string, callback: (...args: unknown[]) => void) => {
-    const validChannels = ["pong"];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
-    }
-  },
-  invoke: (channel: string, ...args: unknown[]) => {
-    const validChannels = [];
-    if (validChannels.includes(channel)) {
-      return ipcRenderer.invoke(channel, ...args);
-    }
-    return Promise.reject(new Error(`Invalid IPC channel: ${channel}`));
+  onUnmaximize: (callback: () => void) => {
+    ipcRenderer.on("window:onUnmaximize", () => callback());
   },
 });

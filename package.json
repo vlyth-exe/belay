@@ -3,10 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "main": "dist/main/electron.js",
-  "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && tsx src/main/electron.ts\"",
+    "dev:electron": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && tsc -p tsconfig.main.json && electron .\"",
     "build": "tsc -b && vite build && tsc -p tsconfig.main.json",
     "lint": "eslint .",
     "preview": "vite preview",
