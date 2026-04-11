@@ -68,6 +68,22 @@ const suggestions = [
   "What are the best practices for React state management?",
 ];
 
+// ── Helper: extract text from ACP ToolCallContent array ────────────────
+
+function extractToolCallOutput(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const parts: string[] = [];
+  for (const item of content as Array<Record<string, unknown>>) {
+    if (item.type === "content") {
+      const block = item.content as Record<string, unknown> | undefined;
+      if (block?.type === "text" && typeof block.text === "string") {
+        parts.push(block.text);
+      }
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
 // ── Chat Component ─────────────────────────────────────────────────────
 
 export function Chat() {
@@ -124,47 +140,110 @@ export function Chat() {
     if (newUpdates.length === 0) return;
 
     for (const raw of newUpdates) {
-      const update = raw as Record<string, unknown>;
+      // ACP sends SessionNotification: { sessionId, update: SessionUpdate }
+      const notification = raw as Record<string, unknown>;
+      const inner = notification.update as Record<string, unknown> | undefined;
+      if (!inner) continue;
+
+      const sessionUpdate = inner.sessionUpdate as string | undefined;
 
       // ── Message chunk (text streaming) ──────────────────────────
+      // ContentChunk: { sessionUpdate: "agent_message_chunk"|"agent_thought_chunk", content: ContentBlock }
+      // ContentBlock (text): { type: "text", text: string }
       if (
-        typeof update.type === "string" &&
-        (update.type === "agent_message_chunk" ||
-          update.type === "thought_chunk")
+        sessionUpdate === "agent_message_chunk" ||
+        sessionUpdate === "agent_thought_chunk"
       ) {
-        const content = update.content as string | undefined;
-        if (content && streamingMessageId.current) {
+        const contentBlock = inner.content as
+          | Record<string, unknown>
+          | undefined;
+        const text =
+          contentBlock?.type === "text"
+            ? (contentBlock.text as string)
+            : undefined;
+        if (text && streamingMessageId.current) {
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === streamingMessageId.current
-                ? { ...msg, content: msg.content + content }
+                ? { ...msg, content: msg.content + text }
                 : msg,
             ),
           );
         }
       }
 
-      // ── Tool call update ────────────────────────────────────────
-      if (typeof update.toolCallId === "string") {
+      // ── Tool call (new) ─────────────────────────────────────────
+      // ToolCall: { sessionUpdate: "tool_call", toolCallId, title, status, rawInput, content, ... }
+      if (sessionUpdate === "tool_call") {
         const toolCall: ToolCallInfo = {
-          id: update.toolCallId as string,
-          name: (update.toolName as string) ?? "unknown",
-          status: (update.status as ToolCallInfo["status"]) ?? "pending",
-          arguments: update.arguments as string | undefined,
-          output: update.content as string | undefined,
+          id: (inner.toolCallId as string) ?? "",
+          name: (inner.title as string) ?? "unknown",
+          status: (inner.status as ToolCallInfo["status"]) ?? "pending",
+          arguments:
+            inner.rawInput != null
+              ? JSON.stringify(inner.rawInput, null, 2)
+              : undefined,
+          output: extractToolCallOutput(inner.content),
         };
 
         setMessages((prev) =>
           prev.map((msg) => {
             if (msg.id !== streamingMessageId.current) return msg;
             const existing = msg.toolCalls ?? [];
-            const idx = existing.findIndex((tc) => tc.id === update.toolCallId);
+            const idx = existing.findIndex((tc) => tc.id === inner.toolCallId);
             if (idx >= 0) {
               const updated = [...existing];
               updated[idx] = { ...updated[idx], ...toolCall };
               return { ...msg, toolCalls: updated };
             }
             return { ...msg, toolCalls: [...existing, toolCall] };
+          }),
+        );
+      }
+
+      // ── Tool call update ────────────────────────────────────────
+      // ToolCallUpdate: { sessionUpdate: "tool_call_update", toolCallId, status?, title?, content?, ... }
+      if (sessionUpdate === "tool_call_update") {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== streamingMessageId.current) return msg;
+            const existing = msg.toolCalls ?? [];
+            const idx = existing.findIndex((tc) => tc.id === inner.toolCallId);
+            if (idx >= 0) {
+              const updated = [...existing];
+              const tc = updated[idx];
+              updated[idx] = {
+                ...tc,
+                ...(inner.status != null
+                  ? { status: inner.status as ToolCallInfo["status"] }
+                  : {}),
+                ...(inner.title != null ? { name: inner.title as string } : {}),
+                ...(inner.rawInput != null
+                  ? { arguments: JSON.stringify(inner.rawInput, null, 2) }
+                  : {}),
+                ...(inner.content != null
+                  ? { output: extractToolCallOutput(inner.content) }
+                  : {}),
+              };
+              return { ...msg, toolCalls: updated };
+            }
+            // If we get an update for a tool call we haven't seen yet, add it
+            return {
+              ...msg,
+              toolCalls: [
+                ...existing,
+                {
+                  id: (inner.toolCallId as string) ?? "",
+                  name: (inner.title as string) ?? "unknown",
+                  status: (inner.status as ToolCallInfo["status"]) ?? "pending",
+                  arguments:
+                    inner.rawInput != null
+                      ? JSON.stringify(inner.rawInput, null, 2)
+                      : undefined,
+                  output: extractToolCallOutput(inner.content),
+                },
+              ],
+            };
           }),
         );
       }
