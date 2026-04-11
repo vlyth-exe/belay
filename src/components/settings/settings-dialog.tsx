@@ -12,11 +12,7 @@ import {
   Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  useInstalledHarnesses,
-  useConnectionState,
-  useAcpActions,
-} from "@/hooks/use-acp";
+import { useInstalledHarnesses, useAcpActions } from "@/hooks/use-acp";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -54,13 +50,39 @@ export function SettingsDialog({
   onOpenRegistry,
 }: SettingsDialogProps) {
   const { harnesses, refresh } = useInstalledHarnesses();
-  const connectionState = useConnectionState();
   const { disconnect } = useAcpActions();
+  const [connectionStates, setConnectionStates] = useState<
+    Record<string, string>
+  >({});
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, AgentEdits>>({});
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState<string | null>(null);
   const initializedRef = useRef(false);
+
+  // Track per-agent connection states
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    const loadStates = async () => {
+      const states: Record<string, string> = {};
+      for (const h of harnesses) {
+        states[h.agentId] =
+          (await api.acpGetConnectionState(h.agentId)) ?? "disconnected";
+      }
+      setConnectionStates(states);
+    };
+    loadStates();
+    const unsubscribe = api.acpOnConnectionStateChange?.(
+      ({ agentId, state }) => {
+        setConnectionStates((prev) => ({
+          ...prev,
+          [agentId]: state as string,
+        }));
+      },
+    );
+    return () => unsubscribe?.();
+  }, [harnesses]);
 
   useEffect(() => {
     if (open) {
@@ -194,8 +216,8 @@ export function SettingsDialog({
     });
   }
 
-  async function handleDisconnect() {
-    await disconnect();
+  async function handleDisconnect(agentId: string) {
+    await disconnect(agentId);
     await refresh();
   }
 
@@ -233,36 +255,6 @@ export function SettingsDialog({
               Manage installed agents, configure environment variables and
               launch arguments.
             </p>
-
-            {/* Connection status */}
-            <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <span
-                className={
-                  "size-2 rounded-full " +
-                  (connectionState === "ready"
-                    ? "bg-green-500"
-                    : connectionState === "initializing"
-                      ? "bg-yellow-500 animate-pulse"
-                      : connectionState === "error"
-                        ? "bg-red-500"
-                        : "bg-muted-foreground/40")
-                }
-              />
-              <span className="flex-1 text-sm text-muted-foreground">
-                {connectionState === "ready"
-                  ? "Agent connected"
-                  : connectionState === "initializing"
-                    ? "Connecting…"
-                    : connectionState === "error"
-                      ? "Connection error"
-                      : "No agent connected"}
-              </span>
-              {connectionState === "ready" && (
-                <Button variant="outline" size="xs" onClick={handleDisconnect}>
-                  Disconnect
-                </Button>
-              )}
-            </div>
 
             {/* Browse registry link */}
             <Button
@@ -304,6 +296,8 @@ export function SettingsDialog({
                   const agentEdits = getEdits(harness.agentId);
                   const isDirty = dirty.has(harness.agentId);
                   const isSaving = saving === harness.agentId;
+                  const connState =
+                    connectionStates[harness.agentId] ?? "disconnected";
 
                   return (
                     <div
@@ -343,6 +337,32 @@ export function SettingsDialog({
                             v{harness.version}
                           </span>
                         </div>
+                        {connState !== "disconnected" && (
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <span
+                              className={
+                                "size-2 rounded-full " +
+                                (connState === "ready"
+                                  ? "bg-green-500"
+                                  : connState === "initializing"
+                                    ? "bg-yellow-500 animate-pulse"
+                                    : "bg-red-500")
+                              }
+                            />
+                            {connState === "ready" && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDisconnect(harness.agentId);
+                                }}
+                                className="text-xs text-destructive hover:underline"
+                              >
+                                Disconnect
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <span className="truncate text-xs text-muted-foreground font-mono">
                           {harness.command}
                         </span>

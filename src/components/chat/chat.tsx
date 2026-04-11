@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Bot, Sparkles } from "lucide-react";
+import { Bot, Sparkles, ChevronDown, Circle, Cpu } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
@@ -9,6 +9,7 @@ import {
   useConnectionState,
   useAcpActions,
   useSlashCommands,
+  useInstalledHarnesses,
 } from "@/hooks/use-acp";
 import { useSessionMessages } from "@/stores/message-store";
 import { useProjectStore } from "@/stores/project-store";
@@ -142,13 +143,33 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ACP state
-  const connectionState = useConnectionState();
-  const { sendPrompt, cancelPrompt, createSession } = useAcpActions();
+  // ── Agent selection ───────────────────────────────────────────────
+  const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
+  const agentSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Look up the agentId for this session from the project store
+  const { renameSession, setSessionAgent, openProjects } = useProjectStore();
+  const agentId =
+    openProjects
+      .find((p) => p.id === projectId)
+      ?.sessions.find((s) => s.id === sessionId)?.agentId ?? null;
+
+  // Agent list for the selector dropdown
+  const { harnesses, refresh: refreshHarnesses } = useInstalledHarnesses();
+
+  // ACP state — keyed by the selected agent
+  const connectionState = useConnectionState(agentId ?? "");
+  const { connect, sendPrompt, cancelPrompt, createSession } = useAcpActions();
 
   // The ACP session ID (separate from the UI sessionId used for persistence)
   const [acpSessionId, setAcpSessionId] = useState<string | null>(null);
-  const slashCommands = useSlashCommands();
+  // Ref mirror so the streaming listener always reads the latest value
+  // without waiting for React to re-render and re-register the effect.
+  const acpSessionIdRef = useRef<string | null>(null);
+
+  // Slash commands are per-session (filtered by acpSessionId)
+  const slashCommands = useSlashCommands(acpSessionId);
+
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
     sessionId: string;
@@ -159,58 +180,125 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
 
-  // Project store for auto-titling sessions
-  const { renameSession } = useProjectStore();
+  // ── Auto-connect to saved agent on mount ─────────────────────────
+  useEffect(() => {
+    if (!agentId) return;
+    connect(agentId).catch((err) =>
+      console.error("[Chat] Auto-connect failed:", err),
+    );
+    refreshHarnesses();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+
+  // ── Close agent selector on outside click ────────────────────────
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (
+        agentSelectorRef.current &&
+        !agentSelectorRef.current.contains(e.target as Node)
+      ) {
+        setAgentSelectorOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // ── Agent selection handler ──────────────────────────────────────
+  const handleSelectAgent = useCallback(
+    async (newAgentId: string) => {
+      setAgentSelectorOpen(false);
+      if (newAgentId === agentId) return;
+
+      // Persist the selection
+      setSessionAgent(projectId, sessionId, newAgentId);
+
+      // Reset ACP session since we're switching agents
+      setAcpSessionId(null);
+      acpSessionIdRef.current = null;
+
+      // Connect to the new agent
+      try {
+        await connect(newAgentId);
+      } catch (err) {
+        console.error("[Chat] Failed to connect to agent:", err);
+      }
+    },
+    [agentId, connect, projectId, sessionId, setSessionAgent],
+  );
 
   // ── Eagerly create ACP session when agent connects ───────────────
   // This triggers the agent to send available_commands_update so slash
   // commands appear before the user sends their first message.
   useEffect(() => {
+    if (!agentId) return;
     if (connectionState !== "ready" || acpSessionId) return;
     let cancelled = false;
-    createSession(projectPath).then((result) => {
+    createSession(agentId, projectPath).then((result) => {
       if (cancelled) return;
       const sid =
         typeof result === "string"
           ? result
           : ((result as { sessionId?: string } | undefined)?.sessionId ?? null);
-      if (sid) setAcpSessionId(sid);
+      // Use functional updater to avoid overwriting acpSessionId that
+      // handleSend may have already set (race condition: both this effect
+      // and handleSend can call createSession concurrently).
+      if (sid) {
+        setAcpSessionId((prev) => prev ?? sid);
+        acpSessionIdRef.current = acpSessionIdRef.current ?? sid;
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [connectionState, acpSessionId, createSession, projectPath]);
+  }, [connectionState, acpSessionId, agentId, createSession, projectPath]);
 
   // ── Reset ACP session when connection drops ──────────────────────
   useEffect(() => {
     if (connectionState === "disconnected") {
       setAcpSessionId(null);
+      acpSessionIdRef.current = null;
     }
   }, [connectionState]);
 
-  // ── Listen for permission requests ───────────────────────────────
+  // ── Listen for permission requests (filtered by acpSessionId) ────
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
     const unsubscribe = api.acpOnPermissionRequest?.((request: unknown) => {
-      setPermissionRequest(request as typeof permissionRequest);
+      if (!request) return;
+      const req = request as NonNullable<typeof permissionRequest>;
+      // Only show permission UI for OUR session (use ref for same reason as streaming listener)
+      const currentAcpSessionId = acpSessionIdRef.current;
+      if (!currentAcpSessionId || req.sessionId !== currentAcpSessionId) return;
+      setPermissionRequest(req);
     });
     return () => {
       unsubscribe?.();
     };
-  }, []);
+  }, [acpSessionId]);
 
-  // ── Process streaming updates directly in the listener ───────────
+  // ── Process streaming updates (filtered by acpSessionId) ─────────
   // Instead of accumulating updates in state and re-iterating in an
   // effect (which can duplicate chunks with multiple listeners),
   // we register ONE listener and process each update immediately
-  // using setMessages functional updaters.
+  // using setMessages functional updaters.  We filter by the ACP
+  // session ID so only updates for THIS chat are processed.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
 
     return api.acpOnUpdate((raw: unknown) => {
       const notification = raw as Record<string, unknown>;
+
+      // ── Filter: only process updates for our ACP session ───────
+      // Use the REF so we always read the latest value, even when
+      // handleSend sets acpSessionId and calls sendPrompt before
+      // React has re-rendered and re-registered this listener.
+      const currentAcpSessionId = acpSessionIdRef.current;
+      const notifSessionId = notification.sessionId as string | undefined;
+      if (!currentAcpSessionId || notifSessionId !== currentAcpSessionId)
+        return;
+
       const inner = notification.update as Record<string, unknown> | undefined;
       if (!inner) return;
 
@@ -354,9 +442,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         renameSession(projectId, sessionId, title);
       }
 
-      const isConnected = connectionState === "ready";
+      const isConnected = agentId && connectionState === "ready";
 
-      if (isConnected) {
+      if (isConnected && agentId) {
         // ── ACP path: use real agent ───────────────────────────────
         setIsThinking(true);
 
@@ -364,13 +452,16 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           // Reuse existing ACP session or create one if needed
           let sid = acpSessionId;
           if (!sid) {
-            const result = await createSession(projectPath);
+            const result = await createSession(agentId!, projectPath);
             sid =
               typeof result === "string"
                 ? result
                 : ((result as { sessionId?: string } | undefined)?.sessionId ??
                   null);
-            if (sid) setAcpSessionId(sid);
+            if (sid) {
+              setAcpSessionId(sid);
+              acpSessionIdRef.current = sid;
+            }
           }
 
           if (!sid) throw new Error("Failed to create session");
@@ -389,7 +480,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           setMessages((prev) => [...prev, assistantMessage]);
 
           // Send prompt (resolves when agent finishes)
-          await sendPrompt(sid, trimmed);
+          await sendPrompt(agentId!, sid, trimmed);
 
           // Mark the message as no longer streaming
           setMessages((prev) =>
@@ -472,6 +563,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       isThinking,
       connectionState,
       acpSessionId,
+      agentId,
       createSession,
       sendPrompt,
       projectPath,
@@ -486,9 +578,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // ── Cancel an in-progress prompt ─────────────────────────────────
   const handleCancel = useCallback(async () => {
-    if (acpSessionId) {
+    if (acpSessionId && agentId) {
       try {
-        await cancelPrompt(acpSessionId);
+        await cancelPrompt(agentId, acpSessionId);
       } catch {
         // Ignore cancel errors
       }
@@ -506,7 +598,88 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     streamingMessageId.current = null;
     // Persist the cancelled state
     saveMessages();
-  }, [acpSessionId, cancelPrompt, setMessages, saveMessages]);
+  }, [acpSessionId, agentId, cancelPrompt, setMessages, saveMessages]);
+
+  // ── Agent selector UI ────────────────────────────────────────────
+  const selectedHarness = harnesses.find((h) => h.agentId === agentId);
+  const agentStateColor =
+    {
+      disconnected: "text-muted-foreground",
+      initializing: "text-yellow-500",
+      ready: "text-green-500",
+      error: "text-red-500",
+    }[connectionState] ?? "text-muted-foreground";
+
+  const agentSelector = (
+    <div ref={agentSelectorRef} className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          if (!agentSelectorOpen) refreshHarnesses();
+          setAgentSelectorOpen(!agentSelectorOpen);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
+      >
+        <Cpu className="size-3" />
+        {agentId && connectionState === "ready" && selectedHarness ? (
+          <>
+            <Circle className={`size-1.5 fill-current ${agentStateColor}`} />
+            <span className="max-w-[140px] truncate font-medium">
+              {selectedHarness.name}
+            </span>
+          </>
+        ) : agentId && connectionState === "initializing" ? (
+          <>
+            <Circle className={`size-1.5 fill-current ${agentStateColor}`} />
+            <span className="max-w-[140px] truncate">Connecting…</span>
+          </>
+        ) : agentId && connectionState === "error" ? (
+          <>
+            <Circle className={`size-1.5 fill-current ${agentStateColor}`} />
+            <span className="max-w-[140px] truncate">Error</span>
+          </>
+        ) : (
+          <span>Select agent</span>
+        )}
+        <ChevronDown className="size-3 opacity-50" />
+      </button>
+
+      {agentSelectorOpen && (
+        <div className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-lg border border-border bg-popover p-1 shadow-md">
+          {harnesses.length === 0 ? (
+            <div className="px-3 py-3 text-center text-[12px] text-muted-foreground">
+              No agents installed.
+              <br />
+              <span className="text-[11px]">
+                Use the registry button in the title bar.
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {harnesses.map((harness) => (
+                <button
+                  key={harness.agentId}
+                  type="button"
+                  onClick={() => handleSelectAgent(harness.agentId)}
+                  className={[
+                    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-muted",
+                    harness.agentId === agentId
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  {harness.name}
+                  <span className="text-[10px] opacity-50">
+                    v{harness.version}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   // ── Empty state ──────────────────────────────────────────────────
   if (messages.length === 0 && !isThinking) {
@@ -522,9 +695,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
               How can I help you?
             </h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {connectionState === "ready"
+              {agentId && connectionState === "ready"
                 ? "Connected to an agent. Ask me anything!"
-                : "Ask me anything — code, ideas, writing, analysis, and more."}
+                : agentId && connectionState === "initializing"
+                  ? "Connecting to agent…"
+                  : "Select an agent below, or just start typing."}
             </p>
           </div>
 
@@ -542,11 +717,17 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           </div>
         </div>
 
-        <ChatInput
-          onSend={handleSend}
-          disabled={isThinking}
-          slashCommands={slashCommands}
-        />
+        {/* Agent selector + input pinned to bottom */}
+        <div className="border-t border-border/40 px-4 pt-2 pb-3">
+          <div className="mx-auto max-w-3xl">
+            <div className="mb-2">{agentSelector}</div>
+            <ChatInput
+              onSend={handleSend}
+              disabled={isThinking}
+              slashCommands={slashCommands}
+            />
+          </div>
+        </div>
 
         {/* Dialogs */}
         <PermissionDialog
@@ -603,11 +784,17 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       </div>
 
       {/* Input pinned to bottom */}
-      <ChatInput
-        onSend={handleSend}
-        disabled={isThinking}
-        slashCommands={slashCommands}
-      />
+      {/* Agent selector + input pinned to bottom */}
+      <div className="border-t border-border/40 px-4 pt-2 pb-3">
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-2">{agentSelector}</div>
+          <ChatInput
+            onSend={handleSend}
+            disabled={isThinking}
+            slashCommands={slashCommands}
+          />
+        </div>
+      </div>
 
       {/* Dialogs */}
       <PermissionDialog

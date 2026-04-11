@@ -12,7 +12,7 @@ export function HarnessSelector() {
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { harnesses, refresh } = useInstalledHarnesses();
-  const connectionState = useConnectionState();
+  const connectionState = useConnectionState(selectedId ?? "");
   const { connect, disconnect } = useAcpActions();
   const { error: acpError, clearError } = useAcpError();
   const ref = useRef<HTMLDivElement>(null);
@@ -52,7 +52,7 @@ export function HarnessSelector() {
   }
 
   async function handleDisconnect() {
-    await disconnect();
+    if (selectedId) await disconnect(selectedId);
     setSelectedId(null);
   }
 

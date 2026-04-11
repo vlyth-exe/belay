@@ -170,35 +170,34 @@ ipcMain.handle("acp:connect", async (_event, agentId: string) => {
   await connectionManager.connect(agentId);
 });
 
-ipcMain.handle("acp:disconnect", async () => {
-  await connectionManager.disconnect();
+ipcMain.handle("acp:disconnect", async (_event, agentId: string) => {
+  await connectionManager.disconnect(agentId);
 });
 
-ipcMain.handle("acp:getConnectionState", () => {
-  return connectionManager.getConnectionState();
-});
-
-ipcMain.handle("acp:createSession", async (_event, cwd?: string) => {
-  return connectionManager.createSession(cwd);
-});
-
-ipcMain.handle("acp:getActiveSession", () => {
-  const sessionId = connectionManager.getActiveSessionId();
-  const harness = connectionManager.getActiveHarness();
-  if (!sessionId || !harness) return null;
-  return { sessionId, agentName: harness.name, agentId: harness.agentId };
+ipcMain.handle("acp:getConnectionState", (_event, agentId: string) => {
+  return connectionManager.getConnectionState(agentId);
 });
 
 ipcMain.handle(
-  "acp:sendPrompt",
-  async (_event, sessionId: string, content: string) => {
-    await connectionManager.sendPrompt(sessionId, content);
+  "acp:createSession",
+  async (_event, agentId: string, cwd?: string) => {
+    return connectionManager.createSession(agentId, cwd);
   },
 );
 
-ipcMain.handle("acp:cancelPrompt", async (_event, sessionId: string) => {
-  await connectionManager.cancelPrompt(sessionId);
-});
+ipcMain.handle(
+  "acp:sendPrompt",
+  async (_event, agentId: string, sessionId: string, content: string) => {
+    await connectionManager.sendPrompt(agentId, sessionId, content);
+  },
+);
+
+ipcMain.handle(
+  "acp:cancelPrompt",
+  async (_event, agentId: string, sessionId: string) => {
+    await connectionManager.cancelPrompt(agentId, sessionId);
+  },
+);
 
 ipcMain.handle(
   "acp:respondPermission",

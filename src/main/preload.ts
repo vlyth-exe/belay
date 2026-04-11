@@ -47,11 +47,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // ACP - Connection lifecycle
   acpConnect: (agentId: string) => ipcRenderer.invoke("acp:connect", agentId),
-  acpDisconnect: () => ipcRenderer.invoke("acp:disconnect"),
-  acpGetConnectionState: () => ipcRenderer.invoke("acp:getConnectionState"),
-  acpOnConnectionStateChange: (callback: (state: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, state: string) =>
-      callback(state);
+  acpDisconnect: (agentId: string) =>
+    ipcRenderer.invoke("acp:disconnect", agentId),
+  acpGetConnectionState: (agentId: string) =>
+    ipcRenderer.invoke("acp:getConnectionState", agentId),
+  acpOnConnectionStateChange: (
+    callback: (event: { agentId: string; state: string }) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { agentId: string; state: string },
+    ) => callback(data);
     ipcRenderer.on("acp:onConnectionStateChange", handler);
     return () =>
       ipcRenderer.removeListener("acp:onConnectionStateChange", handler);
@@ -59,26 +65,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // ACP - Errors
   acpOnError: (
-    callback: (error: { message: string; stderr: string }) => void,
+    callback: (event: {
+      agentId: string;
+      message: string;
+      stderr: string;
+    }) => void,
   ) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
-      error: { message: string; stderr: string },
-    ) => callback(error);
+      data: { agentId: string; message: string; stderr: string },
+    ) => callback(data);
     ipcRenderer.on("acp:onError", handler);
     return () => ipcRenderer.removeListener("acp:onError", handler);
   },
 
   // ACP - Session
-  acpCreateSession: (cwd?: string) =>
-    ipcRenderer.invoke("acp:createSession", cwd),
-  acpGetActiveSession: () => ipcRenderer.invoke("acp:getActiveSession"),
+  acpCreateSession: (agentId: string, cwd?: string) =>
+    ipcRenderer.invoke("acp:createSession", agentId, cwd),
 
   // ACP - Prompt
-  acpSendPrompt: (sessionId: string, content: string) =>
-    ipcRenderer.invoke("acp:sendPrompt", sessionId, content),
-  acpCancelPrompt: (sessionId: string) =>
-    ipcRenderer.invoke("acp:cancelPrompt", sessionId),
+  acpSendPrompt: (agentId: string, sessionId: string, content: string) =>
+    ipcRenderer.invoke("acp:sendPrompt", agentId, sessionId, content),
+  acpCancelPrompt: (agentId: string, sessionId: string) =>
+    ipcRenderer.invoke("acp:cancelPrompt", agentId, sessionId),
 
   // ACP - Streaming updates
   acpOnUpdate: (callback: (update: unknown) => void) => {

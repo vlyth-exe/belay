@@ -24,35 +24,19 @@ interface AcpAgentManifest {
   distribution: Record<string, unknown>;
 }
 
-interface AcpSessionInfo {
-  sessionId: string;
-  agentName: string;
-  agentId: string;
-}
-
 const api = () => window.electronAPI;
 
-export function useConnectionState() {
+export function useConnectionState(agentId: string) {
   const [state, setState] = useState<AcpConnectionState>("disconnected");
 
   useEffect(() => {
-    api()?.acpGetConnectionState().then(setState);
-    return api()?.acpOnConnectionStateChange((s) =>
-      setState(s as AcpConnectionState),
-    );
-  }, []);
+    api()?.acpGetConnectionState(agentId).then(setState);
+    return api()?.acpOnConnectionStateChange(({ agentId: id, state: s }) => {
+      if (id === agentId) setState(s);
+    });
+  }, [agentId]);
 
   return state;
-}
-
-export function useActiveSession() {
-  const [session, setSession] = useState<AcpSessionInfo | null>(null);
-
-  useEffect(() => {
-    api()?.acpGetActiveSession().then(setSession);
-  }, []);
-
-  return session;
 }
 
 export function useInstalledHarnesses() {
@@ -120,6 +104,7 @@ export function useAcpUpdates() {
 
 export function useAcpError() {
   const [error, setError] = useState<{
+    agentId: string;
     message: string;
     stderr: string;
   } | null>(null);
@@ -135,59 +120,42 @@ export function useAcpError() {
   return { error, clearError };
 }
 
-// ── Shared slash commands (module-level singleton) ────────────────────
-// Commands come from the connected agent (global, not per-session).
-// We register ONE listener and broadcast to all hook consumers.
-
-type CommandsListener = (cmds: AcpAvailableCommand[]) => void;
-
-let sharedCommands: AcpAvailableCommand[] = [];
-const sharedListeners = new Set<CommandsListener>();
-let commandsListenerRegistered = false;
-
-function broadcastCommands(cmds: AcpAvailableCommand[]) {
-  sharedCommands = cmds;
-  for (const fn of sharedListeners) fn(cmds);
-}
-
-function registerCommandsListener() {
-  if (commandsListenerRegistered) return;
-  commandsListenerRegistered = true;
-
-  api()?.acpOnUpdate((raw: unknown) => {
-    const notification = raw as Record<string, unknown>;
-    const inner = notification.update as Record<string, unknown> | undefined;
-    if (!inner) return;
-
-    const sessionUpdate = inner.sessionUpdate as string | undefined;
-    if (sessionUpdate === "available_commands_update") {
-      const cmds = inner.availableCommands as AcpAvailableCommand[] | undefined;
-      if (cmds) broadcastCommands(cmds);
-    }
-  });
-
-  // Clear commands when the agent disconnects
-  api()?.acpOnConnectionStateChange((state) => {
-    if (state === "disconnected") broadcastCommands([]);
-  });
-}
-
-export function useSlashCommands(): AcpAvailableCommand[] {
-  const [commands, setCommands] =
-    useState<AcpAvailableCommand[]>(sharedCommands);
-
-  // Sync in case commands arrived before this hook mounted (render-time)
-  if (sharedCommands !== commands) {
-    setCommands(sharedCommands);
-  }
+export function useSlashCommands(
+  acpSessionId: string | null,
+): AcpAvailableCommand[] {
+  const [commands, setCommands] = useState<AcpAvailableCommand[]>([]);
 
   useEffect(() => {
-    registerCommandsListener();
-    sharedListeners.add(setCommands);
-    return () => {
-      sharedListeners.delete(setCommands);
-    };
-  }, []);
+    let cleanup: (() => void) | undefined;
+
+    (async () => {
+      if (!acpSessionId) {
+        setCommands([]);
+        return;
+      }
+
+      cleanup = api()?.acpOnUpdate((raw: unknown) => {
+        const notification = raw as Record<string, unknown>;
+        // Filter: only process updates for our session
+        if (notification.sessionId !== acpSessionId) return;
+
+        const inner = notification.update as
+          | Record<string, unknown>
+          | undefined;
+        if (!inner) return;
+
+        const sessionUpdate = inner.sessionUpdate as string | undefined;
+        if (sessionUpdate === "available_commands_update") {
+          const cmds = inner.availableCommands as
+            | AcpAvailableCommand[]
+            | undefined;
+          if (cmds) setCommands(cmds);
+        }
+      });
+    })();
+
+    return () => cleanup?.();
+  }, [acpSessionId]);
 
   return commands;
 }
@@ -197,21 +165,27 @@ export function useAcpActions() {
     await api()?.acpConnect(agentId);
   }, []);
 
-  const disconnect = useCallback(async () => {
-    await api()?.acpDisconnect();
+  const disconnect = useCallback(async (agentId: string) => {
+    await api()?.acpDisconnect(agentId);
   }, []);
 
-  const createSession = useCallback(async (cwd?: string) => {
-    return api()?.acpCreateSession(cwd);
+  const createSession = useCallback(async (agentId: string, cwd?: string) => {
+    return api()?.acpCreateSession(agentId, cwd);
   }, []);
 
-  const sendPrompt = useCallback(async (sessionId: string, content: string) => {
-    await api()?.acpSendPrompt(sessionId, content);
-  }, []);
+  const sendPrompt = useCallback(
+    async (agentId: string, sessionId: string, content: string) => {
+      await api()?.acpSendPrompt(agentId, sessionId, content);
+    },
+    [],
+  );
 
-  const cancelPrompt = useCallback(async (sessionId: string) => {
-    await api()?.acpCancelPrompt(sessionId);
-  }, []);
+  const cancelPrompt = useCallback(
+    async (agentId: string, sessionId: string) => {
+      await api()?.acpCancelPrompt(agentId, sessionId);
+    },
+    [],
+  );
 
   const respondPermission = useCallback(
     async (requestId: string, optionId: string) => {

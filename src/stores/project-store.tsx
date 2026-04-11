@@ -29,6 +29,12 @@ type ProjectAction =
       projectId: string;
       sessionId: string;
       title: string;
+    }
+  | {
+      type: "SET_SESSION_AGENT";
+      projectId: string;
+      sessionId: string;
+      agentId: string | null;
     };
 
 // ── Context value ──────────────────────────────────────────────────────
@@ -42,6 +48,11 @@ interface ProjectStoreContextValue extends ProjectState {
   removeSession: (projectId: string, sessionId: string) => void;
   setActiveSession: (projectId: string, sessionId: string) => void;
   renameSession: (projectId: string, sessionId: string, title: string) => void;
+  setSessionAgent: (
+    projectId: string,
+    sessionId: string,
+    agentId: string | null,
+  ) => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -63,6 +74,7 @@ function makeDefaultSession(): ChatSession {
     id: crypto.randomUUID(),
     title: "New Chat",
     createdAt: new Date(),
+    agentId: null,
   };
 }
 
@@ -77,6 +89,7 @@ function ensureSessions(project: SerializedProject): Project {
   const sessions = (project.sessions ?? []).map((s) => ({
     ...s,
     createdAt: new Date(s.createdAt),
+    agentId: s.agentId ?? null,
   }));
   // Backward compat: projects loaded from storage before sessions existed
   if (sessions.length === 0) {
@@ -267,6 +280,22 @@ function projectReducer(
       };
     }
 
+    case "SET_SESSION_AGENT": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            sessions: p.sessions.map((s) =>
+              s.id === action.sessionId ? { ...s, agentId: action.agentId } : s,
+            ),
+          }),
+        ),
+      };
+    }
+
     default:
       return state;
   }
@@ -357,6 +386,13 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setSessionAgent = useCallback(
+    (projectId: string, sessionId: string, agentId: string | null) => {
+      dispatch({ type: "SET_SESSION_AGENT", projectId, sessionId, agentId });
+    },
+    [],
+  );
+
   return (
     <ProjectStoreContext.Provider
       value={{
@@ -369,6 +405,7 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         removeSession,
         setActiveSession,
         renameSession,
+        setSessionAgent,
       }}
     >
       {children}

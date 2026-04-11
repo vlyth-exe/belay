@@ -48,24 +48,31 @@ export interface ElectronAPI {
 
   // ACP - Connection lifecycle
   acpConnect: (agentId: string) => Promise<void>;
-  acpDisconnect: () => Promise<void>;
-  acpGetConnectionState: () => Promise<AcpConnectionState>;
+  acpDisconnect: (agentId: string) => Promise<void>;
+  acpGetConnectionState: (agentId: string) => Promise<AcpConnectionState>;
   acpOnConnectionStateChange: (
-    callback: (state: AcpConnectionState) => void,
+    callback: (event: { agentId: string; state: AcpConnectionState }) => void,
   ) => () => void;
 
   // ACP - Errors
   acpOnError: (
-    callback: (error: { message: string; stderr: string }) => void,
+    callback: (event: {
+      agentId: string;
+      message: string;
+      stderr: string;
+    }) => void,
   ) => () => void;
 
   // ACP - Session
-  acpCreateSession: (cwd?: string) => Promise<AcpSessionInfo>;
-  acpGetActiveSession: () => Promise<AcpSessionInfo | null>;
+  acpCreateSession: (agentId: string, cwd?: string) => Promise<AcpSessionInfo>;
 
   // ACP - Prompt
-  acpSendPrompt: (sessionId: string, content: string) => Promise<void>;
-  acpCancelPrompt: (sessionId: string) => Promise<void>;
+  acpSendPrompt: (
+    agentId: string,
+    sessionId: string,
+    content: string,
+  ) => Promise<void>;
+  acpCancelPrompt: (agentId: string, sessionId: string) => Promise<void>;
 
   // ACP - Streaming updates
   acpOnUpdate: (
