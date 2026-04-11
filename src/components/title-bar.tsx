@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Minus, Square, X, Globe } from "lucide-react";
 import { HarnessSelector } from "@/components/harness/harness-selector";
 import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 /** The standard Windows "restore" icon — two overlapping offset rectangles. */
 function RestoreIcon({ className }: { className?: string }) {
@@ -81,6 +82,14 @@ export function TitleBar() {
 
       {/* Spacer to push controls right */}
       <div className="flex-1" />
+
+      {/* Theme toggle */}
+      <div
+        className="flex h-full items-center"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <ThemeToggle />
+      </div>
 
       {/* Right — window controls */}
       <div

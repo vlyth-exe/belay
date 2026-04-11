@@ -143,7 +143,7 @@ export function HarnessRegistryDialog({
                     <img
                       src={agent.icon}
                       alt={agent.name}
-                      className="size-10 shrink-0 rounded-lg"
+                      className="size-10 shrink-0 rounded-lg dark:invert"
                     />
                   ) : (
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
