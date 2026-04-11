@@ -163,3 +163,18 @@ export interface AcpToolCallInfo {
   arguments?: string;
   output?: string;
 }
+
+// ── Session modes ──────────────────────────────────────────────────────
+
+/** A mode that an agent can operate in */
+export interface AcpSessionMode {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+/** The current mode state for a session */
+export interface AcpSessionModeState {
+  currentModeId: string;
+  availableModes: AcpSessionMode[];
+}

@@ -351,7 +351,17 @@ export class AcpClient {
 
   // ── Session & Prompt ────────────────────────────────────────────────
 
-  async createSession(cwd?: string): Promise<string> {
+  async createSession(cwd?: string): Promise<{
+    sessionId: string;
+    modes?: {
+      currentModeId: string;
+      availableModes: Array<{
+        id: string;
+        name: string;
+        description?: string | null;
+      }>;
+    } | null;
+  }> {
     if (!this.connection) throw new Error("Not connected");
 
     const response = await this.connection.newSession({
@@ -360,7 +370,10 @@ export class AcpClient {
     });
 
     this._sessionId = response.sessionId;
-    return response.sessionId;
+    return {
+      sessionId: response.sessionId,
+      modes: response.modes ?? null,
+    };
   }
 
   async sendPrompt(sessionId: string, content: string): Promise<void> {
@@ -375,6 +388,11 @@ export class AcpClient {
   async cancelPrompt(sessionId: string): Promise<void> {
     if (!this.connection) throw new Error("Not connected");
     await this.connection.cancel({ sessionId });
+  }
+
+  async setSessionMode(sessionId: string, modeId: string): Promise<void> {
+    if (!this.connection) throw new Error("Not connected");
+    await this.connection.setSessionMode({ sessionId, modeId });
   }
 
   // ── Disconnect ──────────────────────────────────────────────────────

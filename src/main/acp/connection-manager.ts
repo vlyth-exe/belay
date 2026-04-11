@@ -142,7 +142,20 @@ class ConnectionManager {
     await this.teardownClient(agentId);
   }
 
-  async createSession(agentId: string, cwd?: string): Promise<string> {
+  async createSession(
+    agentId: string,
+    cwd?: string,
+  ): Promise<{
+    sessionId: string;
+    modes?: {
+      currentModeId: string;
+      availableModes: Array<{
+        id: string;
+        name: string;
+        description?: string | null;
+      }>;
+    } | null;
+  }> {
     const managed = this.clients.get(agentId);
     if (!managed) throw new Error(`Not connected to agent: ${agentId}`);
     managed.lastActivity = new Date();
@@ -165,6 +178,17 @@ class ConnectionManager {
     if (!managed) throw new Error(`Not connected to agent: ${agentId}`);
     managed.lastActivity = new Date();
     return managed.client.cancelPrompt(sessionId);
+  }
+
+  async setSessionMode(
+    agentId: string,
+    sessionId: string,
+    modeId: string,
+  ): Promise<void> {
+    const managed = this.clients.get(agentId);
+    if (!managed) throw new Error(`Not connected to agent: ${agentId}`);
+    managed.lastActivity = new Date();
+    return managed.client.setSessionMode(sessionId, modeId);
   }
 
   private async teardownClient(agentId: string): Promise<void> {

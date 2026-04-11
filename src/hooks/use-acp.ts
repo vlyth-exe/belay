@@ -191,6 +191,13 @@ export function useAcpActions() {
     [],
   );
 
+  const setSessionMode = useCallback(
+    async (agentId: string, sessionId: string, modeId: string) => {
+      await api()?.acpSetSessionMode(agentId, sessionId, modeId);
+    },
+    [],
+  );
+
   const respondPermission = useCallback(
     async (requestId: string, optionId: string) => {
       await api()?.acpRespondPermission(requestId, optionId);
@@ -204,6 +211,7 @@ export function useAcpActions() {
     createSession,
     sendPrompt,
     cancelPrompt,
+    setSessionMode,
     respondPermission,
   };
 }

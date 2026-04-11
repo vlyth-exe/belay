@@ -2,7 +2,6 @@ import type {
   AcpAgentManifest,
   HarnessConfig,
   AcpConnectionState,
-  AcpSessionInfo,
   AcpMessageChunk,
   AcpToolCallUpdate,
   AcpPermissionRequest,
@@ -72,7 +71,20 @@ export interface ElectronAPI {
   ) => () => void;
 
   // ACP - Session
-  acpCreateSession: (agentId: string, cwd?: string) => Promise<AcpSessionInfo>;
+  acpCreateSession: (
+    agentId: string,
+    cwd?: string,
+  ) => Promise<{
+    sessionId: string;
+    modes?: {
+      currentModeId: string;
+      availableModes: Array<{
+        id: string;
+        name: string;
+        description?: string | null;
+      }>;
+    } | null;
+  }>;
 
   // ACP - Prompt
   acpSendPrompt: (
@@ -81,6 +93,11 @@ export interface ElectronAPI {
     content: string,
   ) => Promise<void>;
   acpCancelPrompt: (agentId: string, sessionId: string) => Promise<void>;
+  acpSetSessionMode: (
+    agentId: string,
+    sessionId: string,
+    modeId: string,
+  ) => Promise<void>;
 
   // ACP - Streaming updates
   acpOnUpdate: (

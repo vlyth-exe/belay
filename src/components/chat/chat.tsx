@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Bot, Sparkles, ChevronDown, Circle, Cpu } from "lucide-react";
+import { Bot, Sparkles, ChevronDown, Circle, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
 import type { Message, MessageBlock, ToolCallInfo } from "./types";
+import type { AcpSessionMode } from "@/types/acp";
 
 import {
   useConnectionState,
@@ -159,7 +160,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // ACP state — keyed by the selected agent
   const connectionState = useConnectionState(agentId ?? "");
-  const { connect, sendPrompt, cancelPrompt, createSession } = useAcpActions();
+  const { connect, sendPrompt, cancelPrompt, createSession, setSessionMode } =
+    useAcpActions();
 
   // The ACP session ID (separate from the UI sessionId used for persistence)
   const [acpSessionId, setAcpSessionId] = useState<string | null>(null);
@@ -169,6 +171,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // Slash commands are per-session (filtered by acpSessionId)
   const slashCommands = useSlashCommands(acpSessionId);
+
+  // ── Session modes ──────────────────────────────────────────────────
+  const [availableModes, setAvailableModes] = useState<AcpSessionMode[]>([]);
+  const [currentModeId, setCurrentModeId] = useState<string | null>(null);
 
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
@@ -245,6 +251,24 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       if (sid) {
         setAcpSessionId((prev) => prev ?? sid);
         acpSessionIdRef.current = acpSessionIdRef.current ?? sid;
+        // Capture available modes from the session response
+        const modes =
+          typeof result === "string"
+            ? null
+            : ((
+                result as
+                  | {
+                      modes?: {
+                        currentModeId: string;
+                        availableModes: AcpSessionMode[];
+                      };
+                    }
+                  | undefined
+              )?.modes ?? null);
+        if (modes) {
+          setAvailableModes(modes.availableModes);
+          setCurrentModeId(modes.currentModeId);
+        }
       }
     });
     return () => {
@@ -257,6 +281,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     if (connectionState === "disconnected") {
       setAcpSessionId(null);
       acpSessionIdRef.current = null;
+      setAvailableModes([]);
+      setCurrentModeId(null);
     }
   }, [connectionState]);
 
@@ -303,6 +329,14 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       if (!inner) return;
 
       const sessionUpdate = inner.sessionUpdate as string | undefined;
+
+      // ── Mode update (no streaming message needed) ───────────────
+      if (sessionUpdate === "current_mode_update") {
+        const modeId = inner.currentModeId as string | undefined;
+        if (modeId) setCurrentModeId(modeId);
+        return;
+      }
+
       const targetId = streamingMessageId.current;
       if (!targetId) return;
 
@@ -461,6 +495,24 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
             if (sid) {
               setAcpSessionId(sid);
               acpSessionIdRef.current = sid;
+              // Capture available modes from the session response
+              const modes =
+                typeof result === "string"
+                  ? null
+                  : ((
+                      result as
+                        | {
+                            modes?: {
+                              currentModeId: string;
+                              availableModes: AcpSessionMode[];
+                            };
+                          }
+                        | undefined
+                    )?.modes ?? null);
+              if (modes) {
+                setAvailableModes(modes.availableModes);
+                setCurrentModeId(modes.currentModeId);
+              }
             }
           }
 
@@ -610,6 +662,86 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       error: "text-red-500",
     }[connectionState] ?? "text-muted-foreground";
 
+  // ── Mode selector ────────────────────────────────────────────────
+  const [modeSelectorOpen, setModeSelectorOpen] = useState(false);
+  const modeSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Close mode selector on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (
+        modeSelectorRef.current &&
+        !modeSelectorRef.current.contains(e.target as Node)
+      ) {
+        setModeSelectorOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handleModeChange = useCallback(
+    async (modeId: string) => {
+      setModeSelectorOpen(false);
+      if (!agentId || !acpSessionId || modeId === currentModeId) return;
+      setCurrentModeId(modeId);
+      try {
+        await setSessionMode(agentId, acpSessionId, modeId);
+      } catch (err) {
+        console.error("[Chat] Failed to set mode:", err);
+        setCurrentModeId(currentModeId);
+      }
+    },
+    [agentId, acpSessionId, currentModeId, setSessionMode],
+  );
+
+  const modeSelector =
+    availableModes.length > 1 && currentModeId ? (
+      <div ref={modeSelectorRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setModeSelectorOpen(!modeSelectorOpen)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
+        >
+          <Zap className="size-3" />
+          <span className="max-w-[100px] truncate">
+            {availableModes.find((m) => m.id === currentModeId)?.name ??
+              currentModeId}
+          </span>
+          <ChevronDown className="size-3 opacity-50" />
+        </button>
+
+        {modeSelectorOpen && (
+          <div className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-lg border border-border bg-popover p-1 shadow-md">
+            <div className="space-y-0.5">
+              {availableModes.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => handleModeChange(mode.id)}
+                  className={[
+                    "flex w-full items-start gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-muted",
+                    mode.id === currentModeId
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px]">{mode.name}</div>
+                    {mode.description && (
+                      <div className="mt-0.5 text-[10px] leading-snug opacity-60">
+                        {mode.description}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null;
+
   const agentSelector = (
     <div ref={agentSelectorRef} className="relative">
       <button
@@ -720,7 +852,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         {/* Agent selector + input pinned to bottom */}
         <div className="border-t border-border/40 px-4 pt-2 pb-3">
           <div className="mx-auto max-w-3xl">
-            <div className="mb-2">{agentSelector}</div>
+            <div className="mb-2 flex items-center gap-2">
+              {agentSelector}
+              {modeSelector}
+            </div>
             <ChatInput
               onSend={handleSend}
               disabled={isThinking}
@@ -787,7 +922,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       {/* Agent selector + input pinned to bottom */}
       <div className="border-t border-border/40 px-4 pt-2 pb-3">
         <div className="mx-auto max-w-3xl">
-          <div className="mb-2">{agentSelector}</div>
+          <div className="mb-2 flex items-center gap-2">
+            {agentSelector}
+            {modeSelector}
+          </div>
           <ChatInput
             onSend={handleSend}
             disabled={isThinking}

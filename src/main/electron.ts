@@ -218,6 +218,13 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "acp:setSessionMode",
+  async (_event, agentId: string, sessionId: string, modeId: string) => {
+    await connectionManager.setSessionMode(agentId, sessionId, modeId);
+  },
+);
+
+ipcMain.handle(
   "acp:respondPermission",
   async (_event, requestId: string, optionId: string) => {
     connectionManager.respondPermission(requestId, optionId);

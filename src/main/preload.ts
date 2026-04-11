@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("acp:sendPrompt", agentId, sessionId, content),
   acpCancelPrompt: (agentId: string, sessionId: string) =>
     ipcRenderer.invoke("acp:cancelPrompt", agentId, sessionId),
+  acpSetSessionMode: (agentId: string, sessionId: string, modeId: string) =>
+    ipcRenderer.invoke("acp:setSessionMode", agentId, sessionId, modeId),
 
   // ACP - Streaming updates
   acpOnUpdate: (callback: (update: unknown) => void) => {
