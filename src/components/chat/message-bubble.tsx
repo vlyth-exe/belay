@@ -1,5 +1,12 @@
 import { Bot, User } from "lucide-react";
 import { type ReactNode } from "react";
+import { ThinkingBlock } from "./thinking-block";
+import { ToolCallDisplay } from "./tool-call-display";
+import type { Message, MessageBlock, ToolCallInfo } from "./types";
+
+export type { Message, MessageBlock, ToolCallInfo };
+
+// ── Tiny markdown renderer ────────────────────────────────────────────
 
 /**
  * Very small markdown→React renderer for assistant messages.
@@ -73,12 +80,35 @@ function renderInline(line: string): ReactNode[] {
   return nodes;
 }
 
-export interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
+// ── Block renderer ────────────────────────────────────────────────────
+
+function BlockRenderer({
+  block,
+  isStreaming,
+}: {
+  block: MessageBlock;
+  isStreaming?: boolean;
+}) {
+  switch (block.type) {
+    case "thinking":
+      return (
+        <ThinkingBlock content={block.content} isStreaming={isStreaming} />
+      );
+
+    case "text":
+      if (!block.content) return null;
+      return (
+        <div className="break-words text-[14px] leading-relaxed">
+          {renderMarkdown(block.content)}
+        </div>
+      );
+
+    case "tool_call":
+      return <ToolCallDisplay toolCall={block.toolCall} />;
+  }
 }
+
+// ── MessageBubble ─────────────────────────────────────────────────────
 
 interface MessageBubbleProps {
   message: Message;
@@ -87,39 +117,75 @@ interface MessageBubbleProps {
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
+  // ── User messages: simple text bubble ────────────────────────────
+  if (isUser) {
+    // Find the first text block for user content
+    const textBlock = message.blocks.find((b) => b.type === "text");
+    const content = textBlock?.type === "text" ? textBlock.content : "";
+
+    return (
+      <div className="flex flex-row-reverse gap-3">
+        {/* Avatar */}
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <User className="size-4" />
+        </div>
+
+        {/* Bubble */}
+        <div className="max-w-[75%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[14px] leading-relaxed text-primary-foreground">
+          <p className="whitespace-pre-wrap break-words">{content}</p>
+          <span className="mt-1 block text-right text-[11px] opacity-50">
+            {message.timestamp.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Assistant messages: avatar + sequential blocks ───────────────
+  const hasContent = message.blocks.some(
+    (b) =>
+      (b.type === "thinking" && b.content.length > 0) ||
+      (b.type === "text" && b.content.length > 0) ||
+      b.type === "tool_call",
+  );
+
   return (
-    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+    <div className="flex gap-3">
       {/* Avatar */}
-      <div
-        className={[
-          "flex size-8 shrink-0 items-center justify-center rounded-full",
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-muted-foreground",
-        ].join(" ")}
-      >
-        {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Bot className="size-4" />
       </div>
 
-      {/* Bubble */}
-      <div
-        className={[
-          "max-w-[75%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed",
-          isUser
-            ? "bg-primary text-primary-foreground rounded-br-md"
-            : "bg-muted text-foreground rounded-bl-md",
-        ].join(" ")}
-      >
-        {isUser ? (
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+      {/* Blocks rendered sequentially */}
+      <div className="min-w-0 max-w-[75%]">
+        {hasContent ? (
+          <div className="space-y-2">
+            {message.blocks.map((block) => (
+              <BlockRenderer
+                key={block.id}
+                block={block}
+                isStreaming={
+                  message.isStreaming &&
+                  block.id === message.blocks[message.blocks.length - 1]?.id
+                }
+              />
+            ))}
+          </div>
         ) : (
-          <div className="break-words text-[14px] leading-relaxed">
-            {renderMarkdown(message.content)}
+          // Empty streaming message — show typing dots
+          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
+            <div className="flex items-center gap-1">
+              <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
+              <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
+              <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
+            </div>
           </div>
         )}
-        <span
-          className={`mt-1 block text-[11px] opacity-50 ${isUser ? "text-right" : "text-left"}`}
-        >
+
+        <span className="mt-1 block text-left text-[11px] opacity-50">
           {message.timestamp.toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",

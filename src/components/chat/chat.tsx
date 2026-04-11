@@ -2,9 +2,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Bot, Sparkles } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
-import { ToolCallDisplay } from "./tool-call-display";
-import type { ToolCallInfo } from "./tool-call-display";
 import { PermissionDialog } from "./permission-dialog";
+import type { Message, MessageBlock, ToolCallInfo } from "./types";
 
 import {
   useConnectionState,
@@ -12,20 +11,78 @@ import {
   useAcpUpdates,
 } from "@/hooks/use-acp";
 
-// ── Types ──────────────────────────────────────────────────────────────
+// ── Block helpers ────────────────────────────────────────────────────
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  /** For assistant messages, tracks whether this is still streaming */
-  isStreaming?: boolean;
-  /** Tool calls associated with this message */
-  toolCalls?: ToolCallInfo[];
+/** Extract text output from an ACP ToolCallContent array. */
+function extractToolCallOutput(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const parts: string[] = [];
+  for (const item of content as Array<Record<string, unknown>>) {
+    if (item.type === "content") {
+      const block = item.content as Record<string, unknown> | undefined;
+      if (block?.type === "text" && typeof block.text === "string") {
+        parts.push(block.text);
+      }
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
-// ── Mock AI response (fallback when no agent connected) ────────────────
+/**
+ * Append text to the last block if it matches the given type,
+ * otherwise create a new block of that type.
+ *
+ * This produces the sequential block pattern:
+ *   think → think (appended) → say → say (appended) → tool → think → …
+ */
+function appendOrCreateBlock(
+  blocks: MessageBlock[],
+  type: "thinking" | "text",
+  text: string,
+): MessageBlock[] {
+  const last = blocks[blocks.length - 1];
+  if (last && last.type === type) {
+    return [...blocks.slice(0, -1), { ...last, content: last.content + text }];
+  }
+  return [...blocks, { id: crypto.randomUUID(), type, content: text }];
+}
+
+/** Insert or update a tool_call block matched by toolCallId. */
+function upsertToolCallBlock(
+  blocks: MessageBlock[],
+  update: Partial<ToolCallInfo> & { id: string },
+): MessageBlock[] {
+  const idx = blocks.findIndex(
+    (b) => b.type === "tool_call" && b.toolCall.id === update.id,
+  );
+
+  if (idx >= 0) {
+    const block = blocks[idx];
+    if (block.type === "tool_call") {
+      return [
+        ...blocks.slice(0, idx),
+        { ...block, toolCall: { ...block.toolCall, ...update } },
+        ...blocks.slice(idx + 1),
+      ];
+    }
+  }
+
+  // New tool call — append as a new block
+  return [
+    ...blocks,
+    {
+      id: crypto.randomUUID(),
+      type: "tool_call" as const,
+      toolCall: {
+        name: "unknown",
+        status: "pending" as const,
+        ...update,
+      },
+    },
+  ];
+}
+
+// ── Mock AI response (fallback when no agent connected) ────────────
 
 async function getAIResponse(userMessage: string): Promise<string> {
   // Simulate network latency
@@ -59,7 +116,7 @@ async function getAIResponse(userMessage: string): Promise<string> {
   return responses[Math.floor(Math.random() * responses.length)];
 }
 
-// ── Suggested prompts for empty state ──────────────────────────────────
+// ── Suggested prompts for empty state ──────────────────────────────
 
 const suggestions = [
   "Explain how closures work in JavaScript",
@@ -68,23 +125,7 @@ const suggestions = [
   "What are the best practices for React state management?",
 ];
 
-// ── Helper: extract text from ACP ToolCallContent array ────────────────
-
-function extractToolCallOutput(content: unknown): string | undefined {
-  if (!Array.isArray(content)) return undefined;
-  const parts: string[] = [];
-  for (const item of content as Array<Record<string, unknown>>) {
-    if (item.type === "content") {
-      const block = item.content as Record<string, unknown> | undefined;
-      if (block?.type === "text" && typeof block.text === "string") {
-        parts.push(block.text);
-      }
-    }
-  }
-  return parts.length > 0 ? parts.join("\n") : undefined;
-}
-
-// ── Chat Component ─────────────────────────────────────────────────────
+// ── Chat Component ─────────────────────────────────────────────────
 
 interface ChatProps {
   projectPath?: string;
@@ -113,30 +154,26 @@ export function Chat({ projectPath }: ChatProps) {
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
 
-  // ── Reset session when connection drops ────────────────────────────
+  // ── Reset session when connection drops ──────────────────────────
   useEffect(() => {
     if (connectionState === "disconnected") {
       setSessionId(null);
     }
   }, [connectionState]);
 
-  // ── Listen for permission requests ─────────────────────────────────
+  // ── Listen for permission requests ───────────────────────────────
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
-    // The listener is already registered in useAcpUpdates, but permission
-    // requests come on a separate channel so we subscribe here.
     const unsubscribe = api.acpOnPermissionRequest?.((request: unknown) => {
       setPermissionRequest(request as typeof permissionRequest);
     });
     return () => {
-      // acpOnPermissionRequest uses ipcRenderer.on which doesn't return an unsubscribe fn
-      // Cleanup is handled by the preload's listener model
       void unsubscribe;
     };
   }, []);
 
-  // ── Process streaming updates ──────────────────────────────────────
+  // ── Process streaming updates into sequential blocks ─────────────
   useEffect(() => {
     const newUpdates = updates.slice(processedUpdateIndex.current);
     processedUpdateIndex.current = updates.length;
@@ -150,14 +187,12 @@ export function Chat({ projectPath }: ChatProps) {
       if (!inner) continue;
 
       const sessionUpdate = inner.sessionUpdate as string | undefined;
+      const targetId = streamingMessageId.current;
+      if (!targetId) continue;
 
-      // ── Message chunk (text streaming) ──────────────────────────
-      // ContentChunk: { sessionUpdate: "agent_message_chunk"|"agent_thought_chunk", content: ContentBlock }
-      // ContentBlock (text): { type: "text", text: string }
-      if (
-        sessionUpdate === "agent_message_chunk" ||
-        sessionUpdate === "agent_thought_chunk"
-      ) {
+      // ── Thought chunk ──────────────────────────────────────────
+      // ContentChunk: { sessionUpdate: "agent_thought_chunk", content: ContentBlock }
+      if (sessionUpdate === "agent_thought_chunk") {
         const contentBlock = inner.content as
           | Record<string, unknown>
           | undefined;
@@ -165,21 +200,48 @@ export function Chat({ projectPath }: ChatProps) {
           contentBlock?.type === "text"
             ? (contentBlock.text as string)
             : undefined;
-        if (text && streamingMessageId.current) {
+        if (text) {
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === streamingMessageId.current
-                ? { ...msg, content: msg.content + text }
+              msg.id === targetId
+                ? {
+                    ...msg,
+                    blocks: appendOrCreateBlock(msg.blocks, "thinking", text),
+                  }
                 : msg,
             ),
           );
         }
       }
 
-      // ── Tool call (new) ─────────────────────────────────────────
-      // ToolCall: { sessionUpdate: "tool_call", toolCallId, title, status, rawInput, content, ... }
+      // ── Message chunk (text) ───────────────────────────────────
+      // ContentChunk: { sessionUpdate: "agent_message_chunk", content: ContentBlock }
+      if (sessionUpdate === "agent_message_chunk") {
+        const contentBlock = inner.content as
+          | Record<string, unknown>
+          | undefined;
+        const text =
+          contentBlock?.type === "text"
+            ? (contentBlock.text as string)
+            : undefined;
+        if (text) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === targetId
+                ? {
+                    ...msg,
+                    blocks: appendOrCreateBlock(msg.blocks, "text", text),
+                  }
+                : msg,
+            ),
+          );
+        }
+      }
+
+      // ── Tool call (new) ────────────────────────────────────────
+      // ToolCall: { sessionUpdate: "tool_call", toolCallId, title, status, rawInput, content }
       if (sessionUpdate === "tool_call") {
-        const toolCall: ToolCallInfo = {
+        const toolCall: Partial<ToolCallInfo> & { id: string } = {
           id: (inner.toolCallId as string) ?? "",
           name: (inner.title as string) ?? "unknown",
           status: (inner.status as ToolCallInfo["status"]) ?? "pending",
@@ -191,70 +253,43 @@ export function Chat({ projectPath }: ChatProps) {
         };
 
         setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.id !== streamingMessageId.current) return msg;
-            const existing = msg.toolCalls ?? [];
-            const idx = existing.findIndex((tc) => tc.id === inner.toolCallId);
-            if (idx >= 0) {
-              const updated = [...existing];
-              updated[idx] = { ...updated[idx], ...toolCall };
-              return { ...msg, toolCalls: updated };
-            }
-            return { ...msg, toolCalls: [...existing, toolCall] };
-          }),
+          prev.map((msg) =>
+            msg.id === targetId
+              ? { ...msg, blocks: upsertToolCallBlock(msg.blocks, toolCall) }
+              : msg,
+          ),
         );
       }
 
-      // ── Tool call update ────────────────────────────────────────
-      // ToolCallUpdate: { sessionUpdate: "tool_call_update", toolCallId, status?, title?, content?, ... }
+      // ── Tool call update ───────────────────────────────────────
+      // ToolCallUpdate: { sessionUpdate: "tool_call_update", toolCallId, status?, title?, content? }
       if (sessionUpdate === "tool_call_update") {
+        const update: Partial<ToolCallInfo> & { id: string } = {
+          id: (inner.toolCallId as string) ?? "",
+          ...(inner.status != null
+            ? { status: inner.status as ToolCallInfo["status"] }
+            : {}),
+          ...(inner.title != null ? { name: inner.title as string } : {}),
+          ...(inner.rawInput != null
+            ? { arguments: JSON.stringify(inner.rawInput, null, 2) }
+            : {}),
+          ...(inner.content != null
+            ? { output: extractToolCallOutput(inner.content) }
+            : {}),
+        };
+
         setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.id !== streamingMessageId.current) return msg;
-            const existing = msg.toolCalls ?? [];
-            const idx = existing.findIndex((tc) => tc.id === inner.toolCallId);
-            if (idx >= 0) {
-              const updated = [...existing];
-              const tc = updated[idx];
-              updated[idx] = {
-                ...tc,
-                ...(inner.status != null
-                  ? { status: inner.status as ToolCallInfo["status"] }
-                  : {}),
-                ...(inner.title != null ? { name: inner.title as string } : {}),
-                ...(inner.rawInput != null
-                  ? { arguments: JSON.stringify(inner.rawInput, null, 2) }
-                  : {}),
-                ...(inner.content != null
-                  ? { output: extractToolCallOutput(inner.content) }
-                  : {}),
-              };
-              return { ...msg, toolCalls: updated };
-            }
-            // If we get an update for a tool call we haven't seen yet, add it
-            return {
-              ...msg,
-              toolCalls: [
-                ...existing,
-                {
-                  id: (inner.toolCallId as string) ?? "",
-                  name: (inner.title as string) ?? "unknown",
-                  status: (inner.status as ToolCallInfo["status"]) ?? "pending",
-                  arguments:
-                    inner.rawInput != null
-                      ? JSON.stringify(inner.rawInput, null, 2)
-                      : undefined,
-                  output: extractToolCallOutput(inner.content),
-                },
-              ],
-            };
-          }),
+          prev.map((msg) =>
+            msg.id === targetId
+              ? { ...msg, blocks: upsertToolCallBlock(msg.blocks, update) }
+              : msg,
+          ),
         );
       }
     }
   }, [updates]);
 
-  // ── Auto-scroll to bottom on new messages ──────────────────────────
+  // ── Auto-scroll to bottom on new messages ────────────────────────
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -265,7 +300,7 @@ export function Chat({ projectPath }: ChatProps) {
     scrollToBottom();
   }, [messages, isThinking, scrollToBottom]);
 
-  // ── Permission response handler ────────────────────────────────────
+  // ── Permission response handler ──────────────────────────────────
   const handlePermissionRespond = useCallback(
     (requestId: string, optionId: string) => {
       window.electronAPI?.acpRespondPermission(requestId, optionId);
@@ -274,19 +309,19 @@ export function Chat({ projectPath }: ChatProps) {
     [],
   );
 
-  // ── Send a message ─────────────────────────────────────────────────
+  // ── Send a message ───────────────────────────────────────────────
   const handleSend = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed || isThinking) return;
 
+      // User message — single text block
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: "user",
-        content: trimmed,
+        blocks: [{ id: crypto.randomUUID(), type: "text", content: trimmed }],
         timestamp: new Date(),
       };
-
       setMessages((prev) => [...prev, userMessage]);
 
       const isConnected = connectionState === "ready";
@@ -302,7 +337,6 @@ export function Chat({ projectPath }: ChatProps) {
           let sid = sessionId;
           if (!sid) {
             const result = await createSession(projectPath);
-            // Handle both string return and { sessionId } return
             sid =
               typeof result === "string"
                 ? result
@@ -313,16 +347,16 @@ export function Chat({ projectPath }: ChatProps) {
 
           if (!sid) throw new Error("Failed to create session");
 
-          // Create an empty streaming assistant message
+          // Create an empty streaming assistant message — blocks will be
+          // appended sequentially by the update processor above.
           const assistantId = crypto.randomUUID();
           streamingMessageId.current = assistantId;
           const assistantMessage: Message = {
             id: assistantId,
             role: "assistant",
-            content: "",
+            blocks: [],
             timestamp: new Date(),
             isStreaming: true,
-            toolCalls: [],
           };
           setMessages((prev) => [...prev, assistantMessage]);
 
@@ -339,17 +373,27 @@ export function Chat({ projectPath }: ChatProps) {
           // On error, finalize the streaming message with an error note
           if (streamingMessageId.current) {
             setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === streamingMessageId.current
-                  ? {
-                      ...msg,
-                      isStreaming: false,
-                      content:
-                        msg.content ||
-                        "Sorry, something went wrong while communicating with the agent.",
-                    }
-                  : msg,
-              ),
+              prev.map((msg) => {
+                if (msg.id !== streamingMessageId.current) return msg;
+                const hasText = msg.blocks.some(
+                  (b) => b.type === "text" && b.content.length > 0,
+                );
+                return {
+                  ...msg,
+                  isStreaming: false,
+                  blocks: hasText
+                    ? msg.blocks
+                    : [
+                        ...msg.blocks,
+                        {
+                          id: crypto.randomUUID(),
+                          type: "text" as const,
+                          content:
+                            "Sorry, something went wrong while communicating with the agent.",
+                        },
+                      ],
+                };
+              }),
             );
           }
         } finally {
@@ -361,23 +405,28 @@ export function Chat({ projectPath }: ChatProps) {
         setIsThinking(true);
         try {
           const response = await getAIResponse(trimmed);
-
           const assistantMessage: Message = {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: response,
+            blocks: [
+              { id: crypto.randomUUID(), type: "text", content: response },
+            ],
             timestamp: new Date(),
           };
-
           setMessages((prev) => [...prev, assistantMessage]);
         } catch {
           const errorMessage: Message = {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: "Sorry, something went wrong. Please try again.",
+            blocks: [
+              {
+                id: crypto.randomUUID(),
+                type: "text",
+                content: "Sorry, something went wrong. Please try again.",
+              },
+            ],
             timestamp: new Date(),
           };
-
           setMessages((prev) => [...prev, errorMessage]);
         } finally {
           setIsThinking(false);
@@ -391,10 +440,11 @@ export function Chat({ projectPath }: ChatProps) {
       createSession,
       sendPrompt,
       clearUpdates,
+      projectPath,
     ],
   );
 
-  // ── Cancel an in-progress prompt ───────────────────────────────────
+  // ── Cancel an in-progress prompt ─────────────────────────────────
   const handleCancel = useCallback(async () => {
     if (sessionId) {
       try {
@@ -416,7 +466,7 @@ export function Chat({ projectPath }: ChatProps) {
     streamingMessageId.current = null;
   }, [sessionId, cancelPrompt]);
 
-  // ── Empty state ────────────────────────────────────────────────────
+  // ── Empty state ──────────────────────────────────────────────────
   if (messages.length === 0 && !isThinking) {
     return (
       <div className="flex h-full flex-col">
@@ -461,7 +511,7 @@ export function Chat({ projectPath }: ChatProps) {
     );
   }
 
-  // ── Conversation view ──────────────────────────────────────────────
+  // ── Conversation view ────────────────────────────────────────────
   const isStreaming = messages.some((m) => m.isStreaming);
 
   return (
@@ -471,32 +521,7 @@ export function Chat({ projectPath }: ChatProps) {
         <div className="mx-auto max-w-3xl px-4 py-6">
           <div className="space-y-5">
             {messages.map((message) => (
-              <div key={message.id} className="space-y-2">
-                <MessageBubble message={message} />
-
-                {/* Tool calls for assistant messages */}
-                {!message.isStreaming &&
-                  message.role === "assistant" &&
-                  message.toolCalls &&
-                  message.toolCalls.length > 0 && (
-                    <div className="ml-11 space-y-2">
-                      {message.toolCalls.map((tc) => (
-                        <ToolCallDisplay key={tc.id} toolCall={tc} />
-                      ))}
-                    </div>
-                  )}
-
-                {/* Active tool calls during streaming */}
-                {message.isStreaming &&
-                  message.toolCalls &&
-                  message.toolCalls.length > 0 && (
-                    <div className="ml-11 space-y-2">
-                      {message.toolCalls.map((tc) => (
-                        <ToolCallDisplay key={tc.id} toolCall={tc} />
-                      ))}
-                    </div>
-                  )}
-              </div>
+              <MessageBubble key={message.id} message={message} />
             ))}
 
             {/* Typing indicator (only when not streaming via ACP) */}
