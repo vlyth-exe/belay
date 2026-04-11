@@ -13,6 +13,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("window:onUnmaximize", () => callback());
   },
 
+  // Window drag
+  startDrag: (mouseX: number, mouseY: number) =>
+    ipcRenderer.send("window:startDrag", mouseX, mouseY),
+  stopDrag: () => ipcRenderer.send("window:stopDrag"),
+  getWindowPosition: () =>
+    ipcRenderer.invoke("window:getWindowPosition") as Promise<{
+      x: number;
+      y: number;
+    }>,
+
   // ACP - Registry & Harness
   acpListRegistry: () => ipcRenderer.invoke("acp:listRegistry"),
   acpListInstalled: () => ipcRenderer.invoke("acp:listInstalled"),

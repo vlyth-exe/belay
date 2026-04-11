@@ -18,6 +18,11 @@ export interface ElectronAPI {
   onMaximize: (callback: () => void) => void;
   onUnmaximize: (callback: () => void) => void;
 
+  // Window drag
+  startDrag: (mouseX: number, mouseY: number) => void;
+  stopDrag: () => void;
+  getWindowPosition: () => Promise<{ x: number; y: number }>;
+
   // ACP - Registry & Harness
   acpListRegistry: () => Promise<AcpAgentManifest[]>;
   acpListInstalled: () => Promise<HarnessConfig[]>;

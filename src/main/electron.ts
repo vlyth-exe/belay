@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, screen } from "electron";
 import * as path from "node:path";
 import { connectionManager } from "./acp/connection-manager.js";
 import { fetchRegistry } from "./acp/registry.js";
@@ -70,6 +70,55 @@ ipcMain.on("window:close", () => {
 
 ipcMain.handle("window:isMaximized", () => {
   return mainWindow?.isMaximized() ?? false;
+});
+
+// ── Window drag via polling screen cursor position ────────────────────
+let dragInterval: ReturnType<typeof setInterval> | null = null;
+let dragOffset = { x: 0, y: 0 };
+
+ipcMain.on("window:startDrag", (_event, mouseX: number, mouseY: number) => {
+  if (!mainWindow || dragInterval) return;
+
+  if (mainWindow.isMaximized()) {
+    // Capture proportional cursor position on the maximised title bar
+    const maximizedBounds = mainWindow.getBounds();
+    const proportionalX = (mouseX - maximizedBounds.x) / maximizedBounds.width;
+
+    // Restore and reposition so the cursor lands at the same relative spot
+    mainWindow.unmaximize();
+    const restoredBounds = mainWindow.getBounds();
+    const newX = mouseX - proportionalX * restoredBounds.width;
+    const newY = mouseY - (mouseY - maximizedBounds.y);
+    mainWindow.setPosition(Math.round(newX), Math.round(newY));
+  }
+
+  const winPos = mainWindow.getPosition();
+  dragOffset = { x: mouseX - winPos[0], y: mouseY - winPos[1] };
+  dragInterval = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (dragInterval) clearInterval(dragInterval);
+      dragInterval = null;
+      return;
+    }
+    const cursorPos = screen.getCursorScreenPoint();
+    mainWindow.setPosition(
+      cursorPos.x - dragOffset.x,
+      cursorPos.y - dragOffset.y,
+    );
+  }, 16);
+});
+
+ipcMain.on("window:stopDrag", () => {
+  if (dragInterval) {
+    clearInterval(dragInterval);
+    dragInterval = null;
+  }
+});
+
+ipcMain.handle("window:getWindowPosition", () => {
+  if (!mainWindow) return { x: 0, y: 0 };
+  const [x, y] = mainWindow.getPosition();
+  return { x, y };
 });
 
 // ── IPC handlers for ACP operations ──────────────────────────────────

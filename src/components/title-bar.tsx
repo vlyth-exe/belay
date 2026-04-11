@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Minus, Square, X, Globe } from "lucide-react";
 import { HarnessSelector } from "@/components/harness/harness-selector";
 import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
@@ -26,6 +26,10 @@ function RestoreIcon({ className }: { className?: string }) {
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [showRegistry, setShowRegistry] = useState(false);
+  const lastClickTimeRef = useRef(0);
+  const dragStartedRef = useRef(false);
+  const dragStartPosRef = useRef({ screenX: 0, screenY: 0 });
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -51,10 +55,76 @@ export function TitleBar() {
     window.electronAPI?.close();
   }, []);
 
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      // Only respond to primary button on non-interactive areas
+      const target = e.target as HTMLElement;
+      if (e.button !== 0 || target.closest("button")) {
+        return;
+      }
+
+      // Cancel any previous drag listeners that are still active
+      if (dragCleanupRef.current) {
+        dragCleanupRef.current();
+        dragCleanupRef.current = null;
+      }
+
+      const now = Date.now();
+      if (now - lastClickTimeRef.current < 300) {
+        // Double-click → toggle maximize
+        lastClickTimeRef.current = 0;
+        handleMaximize();
+        return;
+      }
+      lastClickTimeRef.current = now;
+
+      // Record start position and prepare for potential drag
+      dragStartedRef.current = false;
+      dragStartPosRef.current = { screenX: e.screenX, screenY: e.screenY };
+
+      const headerEl = e.currentTarget;
+      headerEl.setPointerCapture(e.pointerId);
+
+      const onPointerMove = (ev: PointerEvent) => {
+        if (dragStartedRef.current) return;
+        const dx = ev.screenX - dragStartPosRef.current.screenX;
+        const dy = ev.screenY - dragStartPosRef.current.screenY;
+        if (dx * dx + dy * dy > 9) {
+          // Moved past 3px threshold — start the drag
+          dragStartedRef.current = true;
+          window.electronAPI?.startDrag(ev.screenX, ev.screenY);
+        }
+      };
+
+      const onPointerUp = () => {
+        headerEl.removeEventListener("pointermove", onPointerMove);
+        headerEl.removeEventListener("pointerup", onPointerUp);
+        dragCleanupRef.current = null;
+        if (dragStartedRef.current) {
+          dragStartedRef.current = false;
+          window.electronAPI?.stopDrag();
+        }
+      };
+
+      headerEl.addEventListener("pointermove", onPointerMove);
+      headerEl.addEventListener("pointerup", onPointerUp);
+
+      dragCleanupRef.current = () => {
+        headerEl.removeEventListener("pointermove", onPointerMove);
+        headerEl.removeEventListener("pointerup", onPointerUp);
+        if (dragStartedRef.current) {
+          dragStartedRef.current = false;
+          window.electronAPI?.stopDrag();
+        }
+      };
+    },
+    [handleMaximize],
+  );
+
   return (
     <header
       className="flex h-9 shrink-0 select-none items-center border-b border-border bg-background/80 backdrop-blur-sm"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      onPointerDown={handlePointerDown}
     >
       {/* Left — app title */}
       <div className="flex items-center gap-2 pl-3.5">
@@ -67,6 +137,7 @@ export function TitleBar() {
       <div
         className="flex items-center gap-1"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <HarnessSelector />
         <button
@@ -87,6 +158,7 @@ export function TitleBar() {
       <div
         className="flex h-full items-center"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <ThemeToggle />
       </div>
@@ -95,6 +167,7 @@ export function TitleBar() {
       <div
         className="flex h-full"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <button
           onClick={handleMinimize}
