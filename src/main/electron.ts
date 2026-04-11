@@ -7,6 +7,7 @@ import {
   listInstalled,
   installHarness,
   uninstallHarness,
+  updateHarness,
 } from "./acp/harness-store.js";
 
 let mainWindow: BrowserWindow | null = null;
@@ -98,6 +99,22 @@ ipcMain.handle(
 ipcMain.handle("acp:uninstallHarness", async (_event, agentId: string) => {
   uninstallHarness(agentId);
 });
+
+ipcMain.handle(
+  "acp:updateHarness",
+  async (
+    _event,
+    agentId: string,
+    updates: Partial<
+      Pick<
+        import("./acp/harness-store.js").HarnessConfig,
+        "cwd" | "env" | "mcpServers" | "args"
+      >
+    >,
+  ) => {
+    updateHarness(agentId, updates);
+  },
+);
 
 ipcMain.handle("acp:connect", async (_event, agentId: string) => {
   await connectionManager.connect(agentId);

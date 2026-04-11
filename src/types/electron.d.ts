@@ -23,6 +23,15 @@ export interface ElectronAPI {
   acpListInstalled: () => Promise<HarnessConfig[]>;
   acpInstallHarness: (manifest: AcpAgentManifest) => Promise<void>;
   acpUninstallHarness: (agentId: string) => Promise<void>;
+  acpUpdateHarness: (
+    agentId: string,
+    updates: {
+      cwd?: string;
+      env?: Record<string, string>;
+      mcpServers?: unknown[];
+      args?: string[];
+    },
+  ) => Promise<void>;
 
   // ACP - Connection lifecycle
   acpConnect: (agentId: string) => Promise<void>;

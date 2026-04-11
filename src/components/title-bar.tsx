@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Minus, Square, X, Globe } from "lucide-react";
+import { Minus, Square, X, Globe, Settings } from "lucide-react";
 import { HarnessSelector } from "@/components/harness/harness-selector";
 import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
+import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 /** The standard Windows "restore" icon — two overlapping offset rectangles. */
@@ -26,6 +27,7 @@ function RestoreIcon({ className }: { className?: string }) {
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [showRegistry, setShowRegistry] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -84,11 +86,20 @@ export function TitleBar() {
       {/* Spacer to push controls right */}
       <div className="flex-1" />
 
-      {/* Theme toggle */}
+      {/* Settings & theme toggle */}
       <div
-        className="flex h-full items-center"
+        className="flex h-full items-center gap-0.5"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings className="size-3.5" />
+        </button>
         <ThemeToggle />
       </div>
 
@@ -129,10 +140,18 @@ export function TitleBar() {
         </button>
       </div>
 
-      {/* Registry dialog */}
+      {/* Dialogs */}
       <HarnessRegistryDialog
         open={showRegistry}
         onClose={() => setShowRegistry(false)}
+      />
+      <SettingsDialog
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        onOpenRegistry={() => {
+          setShowSettings(false);
+          setShowRegistry(true);
+        }}
       />
     </header>
   );

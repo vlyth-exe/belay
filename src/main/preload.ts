@@ -20,6 +20,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("acp:installHarness", manifest),
   acpUninstallHarness: (agentId: string) =>
     ipcRenderer.invoke("acp:uninstallHarness", agentId),
+  acpUpdateHarness: (
+    agentId: string,
+    updates: {
+      cwd?: string;
+      env?: Record<string, string>;
+      mcpServers?: unknown[];
+      args?: string[];
+    },
+  ) => ipcRenderer.invoke("acp:updateHarness", agentId, updates),
 
   // ACP - Connection lifecycle
   acpConnect: (agentId: string) => ipcRenderer.invoke("acp:connect", agentId),
