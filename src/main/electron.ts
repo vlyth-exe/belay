@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as path from "node:path";
 import { connectionManager } from "./acp/connection-manager.js";
 import { fetchRegistry } from "./acp/registry.js";
@@ -85,6 +85,18 @@ ipcMain.on("window:close", () => {
 
 ipcMain.handle("window:isMaximized", () => {
   return mainWindow?.isMaximized() ?? false;
+});
+
+// ── IPC handlers for project operations ──────────────────────────────
+
+ipcMain.handle("project:openDirectory", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Open Project Folder",
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
 });
 
 // ── IPC handlers for ACP operations ──────────────────────────────────

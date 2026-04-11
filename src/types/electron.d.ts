@@ -10,6 +10,9 @@ import type {
 } from "./acp";
 
 export interface ElectronAPI {
+  // Project
+  projectOpenDirectory: () => Promise<string | null>;
+
   // Window controls
   minimize: () => void;
   maximize: () => void;

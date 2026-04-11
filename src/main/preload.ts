@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Project
+  projectOpenDirectory: () => ipcRenderer.invoke("project:openDirectory"),
+
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),

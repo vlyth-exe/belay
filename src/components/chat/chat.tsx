@@ -86,7 +86,11 @@ function extractToolCallOutput(content: unknown): string | undefined {
 
 // ── Chat Component ─────────────────────────────────────────────────────
 
-export function Chat() {
+interface ChatProps {
+  projectPath?: string;
+}
+
+export function Chat({ projectPath }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -297,7 +301,7 @@ export function Chat() {
           // Create session if we don't have one
           let sid = sessionId;
           if (!sid) {
-            const result = await createSession();
+            const result = await createSession(projectPath);
             // Handle both string return and { sessionId } return
             sid =
               typeof result === "string"
