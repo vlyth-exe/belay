@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Project
   projectOpenDirectory: () => ipcRenderer.invoke("project:openDirectory"),
 
+  // Dialog
+  dialogOpenFile: () => ipcRenderer.invoke("dialog:openFile"),
+
   // Session persistence
   sessionLoadMessages: (sessionId: string) =>
     ipcRenderer.invoke("session:loadMessages", sessionId),
@@ -42,6 +45,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       env?: Record<string, string>;
       mcpServers?: unknown[];
       args?: string[];
+      command?: string;
+      useWsl?: boolean;
+      wslDistro?: string;
+      linuxCommand?: string;
+      linuxArgs?: string[];
     },
   ) => ipcRenderer.invoke("acp:updateHarness", agentId, updates),
 

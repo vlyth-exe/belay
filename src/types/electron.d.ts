@@ -13,6 +13,9 @@ export interface ElectronAPI {
   // Project
   projectOpenDirectory: () => Promise<string | null>;
 
+  // Dialog
+  dialogOpenFile: () => Promise<string | null>;
+
   // Session persistence
   sessionLoadMessages: (
     sessionId: string,
@@ -43,6 +46,11 @@ export interface ElectronAPI {
       env?: Record<string, string>;
       mcpServers?: unknown[];
       args?: string[];
+      command?: string;
+      useWsl?: boolean;
+      wslDistro?: string;
+      linuxCommand?: string;
+      linuxArgs?: string[];
     },
   ) => Promise<void>;
 

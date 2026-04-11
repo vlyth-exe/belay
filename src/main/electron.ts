@@ -104,6 +104,16 @@ ipcMain.handle("project:openDirectory", async () => {
   return result.filePaths[0];
 });
 
+ipcMain.handle("dialog:openFile", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile"],
+    title: "Select Executable",
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
 // ── IPC handlers for session persistence ──────────────────────────────
 
 ipcMain.handle("session:loadMessages", async (_event, sessionId: string) => {
@@ -158,7 +168,15 @@ ipcMain.handle(
     updates: Partial<
       Pick<
         import("./acp/harness-store.js").HarnessConfig,
-        "cwd" | "env" | "mcpServers" | "args"
+        | "cwd"
+        | "env"
+        | "mcpServers"
+        | "args"
+        | "useWsl"
+        | "wslDistro"
+        | "command"
+        | "linuxCommand"
+        | "linuxArgs"
       >
     >,
   ) => {

@@ -21,9 +21,14 @@ interface SettingsDialogProps {
 }
 
 interface AgentEdits {
+  command: string;
   cwd: string;
   env: { key: string; value: string }[];
   args: string[];
+  useWsl: boolean;
+  wslDistro: string;
+  linuxCommand: string;
+  linuxArgs: string[];
 }
 
 function toEnvPairs(
@@ -101,9 +106,14 @@ export function SettingsDialog({
       const initial: Record<string, AgentEdits> = {};
       for (const h of harnesses) {
         initial[h.agentId] = {
+          command: h.command || "",
           cwd: h.cwd || "",
           env: toEnvPairs(h.env || {}),
           args: [...(h.args || [])],
+          useWsl: h.useWsl ?? false,
+          wslDistro: h.wslDistro || "",
+          linuxCommand: h.linuxCommand || "",
+          linuxArgs: [...(h.linuxArgs || [])],
         };
       }
       setEdits(initial);
@@ -115,9 +125,14 @@ export function SettingsDialog({
   function getEdits(agentId: string): AgentEdits {
     return (
       edits[agentId] || {
+        command: "",
         cwd: "",
         env: [],
         args: [],
+        useWsl: false,
+        wslDistro: "",
+        linuxCommand: "",
+        linuxArgs: [],
       }
     );
   }
@@ -176,14 +191,65 @@ export function SettingsDialog({
     markDirty(agentId);
   }
 
+  function updateUseWsl(agentId: string, useWsl: boolean) {
+    setEdits((prev) => ({
+      ...prev,
+      [agentId]: { ...getEdits(agentId), useWsl },
+    }));
+    markDirty(agentId);
+  }
+
+  function updateWslDistro(agentId: string, wslDistro: string) {
+    setEdits((prev) => ({
+      ...prev,
+      [agentId]: { ...getEdits(agentId), wslDistro },
+    }));
+    markDirty(agentId);
+  }
+
+  function updateCommand(agentId: string, command: string) {
+    setEdits((prev) => ({
+      ...prev,
+      [agentId]: { ...getEdits(agentId), command },
+    }));
+    markDirty(agentId);
+  }
+
+  function updateLinuxCommand(agentId: string, linuxCommand: string) {
+    setEdits((prev) => ({
+      ...prev,
+      [agentId]: { ...getEdits(agentId), linuxCommand },
+    }));
+    markDirty(agentId);
+  }
+
+  async function browseExecutable(
+    agentId: string,
+    field: "command" | "linuxCommand",
+  ) {
+    const filePath = await window.electronAPI?.dialogOpenFile?.();
+    if (filePath) {
+      if (field === "command") {
+        updateCommand(agentId, filePath);
+      } else {
+        updateLinuxCommand(agentId, filePath);
+      }
+    }
+  }
+
   async function saveAgent(agentId: string) {
     const e = getEdits(agentId);
     setSaving(agentId);
     try {
       await window.electronAPI?.acpUpdateHarness(agentId, {
+        command: e.command || undefined,
         cwd: e.cwd || undefined,
         env: fromEnvPairs(e.env),
         args: e.args,
+        useWsl: e.useWsl || undefined,
+        wslDistro: e.wslDistro || undefined,
+        linuxCommand: e.linuxCommand || undefined,
+        linuxArgs: e.linuxArgs.length > 0 ? e.linuxArgs : undefined,
       });
       setDirty((prev) => {
         const next = new Set(prev);
@@ -204,9 +270,14 @@ export function SettingsDialog({
     setEdits((prev) => ({
       ...prev,
       [agentId]: {
+        command: harness.command || "",
         cwd: harness.cwd || "",
         env: toEnvPairs(harness.env || {}),
         args: [...(harness.args || [])],
+        useWsl: harness.useWsl ?? false,
+        wslDistro: harness.wslDistro || "",
+        linuxCommand: harness.linuxCommand || "",
+        linuxArgs: [...(harness.linuxArgs || [])],
       },
     }));
     setDirty((prev) => {
@@ -374,6 +445,34 @@ export function SettingsDialog({
                       {/* Expanded config */}
                       {isExpanded && (
                         <div className="border-t border-border px-3 py-3 space-y-4">
+                          {/* Command / Executable */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Command / Executable
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={agentEdits.command}
+                                onChange={(e) =>
+                                  updateCommand(harness.agentId, e.target.value)
+                                }
+                                placeholder="e.g. npx or path/to/binary"
+                                className="flex-1 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-sm focus:border-ring focus:outline-none"
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon-sm"
+                                onClick={() =>
+                                  browseExecutable(harness.agentId, "command")
+                                }
+                                title="Browse for executable"
+                              >
+                                <FolderOpen className="size-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+
                           {/* Working Directory */}
                           <div>
                             <label className="mb-1.5 block text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -410,6 +509,112 @@ export function SettingsDialog({
                               className="w-full rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-sm focus:border-ring focus:outline-none"
                             />
                           </div>
+
+                          {/* WSL Mode (Windows only) */}
+                          {navigator.platform.startsWith("Win") && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <label className="mb-0.5 block text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                    WSL Mode
+                                  </label>
+                                  <p className="text-xs text-muted-foreground">
+                                    Run this agent inside Windows Subsystem for
+                                    Linux
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={agentEdits.useWsl}
+                                  onClick={() =>
+                                    updateUseWsl(
+                                      harness.agentId,
+                                      !agentEdits.useWsl,
+                                    )
+                                  }
+                                  className={
+                                    "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors " +
+                                    (agentEdits.useWsl
+                                      ? "bg-primary"
+                                      : "bg-muted border border-border")
+                                  }
+                                >
+                                  <span
+                                    className={
+                                      "inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform " +
+                                      (agentEdits.useWsl
+                                        ? "translate-x-4.5"
+                                        : "translate-x-0.5")
+                                    }
+                                  />
+                                </button>
+                              </div>
+                              {agentEdits.useWsl && (
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className="mb-1 block text-xs text-muted-foreground">
+                                      Distribution
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={agentEdits.wslDistro}
+                                      onChange={(e) =>
+                                        updateWslDistro(
+                                          harness.agentId,
+                                          e.target.value,
+                                        )
+                                      }
+                                      placeholder="Default (leave empty)"
+                                      className="w-full rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-sm focus:border-ring focus:outline-none"
+                                    />
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Optional WSL distribution name (e.g.
+                                      "Ubuntu"). Uses the default distro if
+                                      empty.
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <label className="mb-1 block text-xs text-muted-foreground">
+                                      WSL Command
+                                    </label>
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="text"
+                                        value={agentEdits.linuxCommand}
+                                        onChange={(e) =>
+                                          updateLinuxCommand(
+                                            harness.agentId,
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder="Linux command to run inside WSL"
+                                        className="flex-1 rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-sm focus:border-ring focus:outline-none"
+                                      />
+                                      <Button
+                                        variant="outline"
+                                        size="icon-sm"
+                                        onClick={() =>
+                                          browseExecutable(
+                                            harness.agentId,
+                                            "linuxCommand",
+                                          )
+                                        }
+                                        title="Browse for executable"
+                                      >
+                                        <FolderOpen className="size-3.5" />
+                                      </Button>
+                                    </div>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Command to run inside WSL. Can be a Linux
+                                      binary path or a command available in WSL
+                                      PATH.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {/* Environment Variables */}
                           <div>

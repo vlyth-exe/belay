@@ -48,6 +48,14 @@ export interface HarnessConfig {
   cwd?: string;
   /** MCP server configurations to pass to the agent */
   mcpServers?: McpServerConfig[];
+  /** On Windows, run the agent inside WSL (Windows Subsystem for Linux) */
+  useWsl?: boolean;
+  /** Optional WSL distribution name (e.g. "Ubuntu"). Defaults to the default distro if not set. */
+  wslDistro?: string;
+  /** Linux binary command (populated from the linux-* distribution entry for WSL use) */
+  linuxCommand?: string;
+  /** Linux binary args (populated from the linux-* distribution entry for WSL use) */
+  linuxArgs?: string[];
 }
 
 export interface McpServerConfig {

@@ -13,6 +13,10 @@ interface HarnessConfig {
   args: string[];
   env: Record<string, string>;
   cwd?: string;
+  useWsl?: boolean;
+  wslDistro?: string;
+  linuxCommand?: string;
+  linuxArgs?: string[];
 }
 
 interface AcpAgentManifest {

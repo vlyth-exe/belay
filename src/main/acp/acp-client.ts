@@ -66,6 +66,19 @@ function extractLastError(stderr: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Convert a Windows path to a WSL-compatible path.
+ * e.g. "D:\\Dev\\belay" → "/mnt/d/Dev/belay"
+ */
+function windowsToWslPath(winPath: string): string {
+  let path = winPath.replace(/\\/g, "/");
+  path = path.replace(
+    /^([A-Za-z]):/,
+    (_, drive: string) => `/mnt/${drive.toLowerCase()}`,
+  );
+  return path;
+}
+
 // ── AcpClient ──────────────────────────────────────────────────────────
 
 export class AcpClient {
@@ -128,16 +141,42 @@ export class AcpClient {
 
       // ── Spawn agent subprocess ───────────────────────────────────
       //
-      // On Windows, commands like `npx` are actually `npx.cmd` batch
-      // files that require cmd.exe to interpret them.  We use
-      // `shell: true` but pass a **single command string** instead of
-      // an args array to avoid the Node.js DEP0190 deprecation warning
-      // ("Passing args to a child process with shell option true…").
+      // Three spawn modes:
       //
-      // On Unix the command is directly executable, so we spawn
-      // without a shell for clean process-tree management.
+      // 1. WSL (Windows + useWsl): Wraps the command through `wsl.exe`
+      //    so Linux-only agents run inside Windows Subsystem for Linux.
+      //    The cwd is converted to a WSL path (e.g. /mnt/c/...) and
+      //    passed via `--cd`.  An optional `-d <distro>` selects the
+      //    WSL distribution.
+      //
+      // 2. Native Windows: Commands like `npx` are actually `npx.cmd`
+      //    batch files that require cmd.exe to interpret them.  We use
+      //    `shell: true` but pass a **single command string** instead
+      //    of an args array to avoid the Node.js DEP0190 deprecation
+      //    warning.
+      //
+      // 3. Unix: The command is directly executable, so we spawn
+      //    without a shell for clean process-tree management.
 
-      if (isWindows) {
+      if (isWindows && harness.useWsl) {
+        // WSL mode — wrap through wsl.exe, using the Linux binary
+        // command if available (falls back to the regular command).
+        const wslCommand = harness.linuxCommand ?? harness.command;
+        const wslCommandArgs = harness.linuxArgs ?? harness.args;
+        const wslArgs: string[] = [];
+        if (harness.wslDistro) {
+          wslArgs.push("-d", harness.wslDistro);
+        }
+        wslArgs.push("--cd", windowsToWslPath(cwd));
+        wslArgs.push("--", wslCommand, ...wslCommandArgs);
+        console.log(
+          `[ACP ${harness.name}] Spawning via WSL: wsl ${wslArgs.join(" ")}`,
+        );
+        this.process = spawn("wsl.exe", wslArgs, {
+          env,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } else if (isWindows) {
         const cmdLine = buildCommandLine(harness.command, harness.args);
         this.process = spawn(cmdLine, {
           cwd,
