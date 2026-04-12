@@ -14,6 +14,7 @@ import {
 import { useSessionMessages, useMessageStore } from "@/stores/message-store";
 import { useSessionStatusWrite } from "@/stores/session-status-store";
 import { useProjectStore } from "@/stores/project-store";
+import { getNotificationsEnabled } from "@/lib/app-settings";
 
 // ── Block helpers ────────────────────────────────────────────────────
 
@@ -599,7 +600,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     }
 
     // ── Prompt finished: send notification (main process checks window) ──
-    if (!notifiedRef.current && messages.length > 0) {
+    if (
+      !notifiedRef.current &&
+      messages.length > 0 &&
+      getNotificationsEnabled()
+    ) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.role === "assistant" && !lastMsg.isStreaming) {
         notifiedRef.current = true;

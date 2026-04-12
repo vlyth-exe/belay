@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -10,9 +10,15 @@ import {
   RotateCcw,
   Plug,
   Globe,
+  Bell,
+  BellOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useInstalledHarnesses, useAcpActions } from "@/hooks/use-acp";
+import {
+  getNotificationsEnabled,
+  setNotificationsEnabled,
+} from "@/lib/app-settings";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -55,7 +61,16 @@ export function SettingsDialog({
   onOpenRegistry,
 }: SettingsDialogProps) {
   const { harnesses, refresh } = useInstalledHarnesses();
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(
+    getNotificationsEnabled,
+  );
   const { disconnect } = useAcpActions();
+
+  const toggleNotifications = useCallback(() => {
+    const next = !notificationsEnabled;
+    setNotificationsEnabledState(next);
+    setNotificationsEnabled(next);
+  }, [notificationsEnabled]);
   const [connectionStates, setConnectionStates] = useState<
     Record<string, string>
   >({});
@@ -703,6 +718,50 @@ export function SettingsDialog({
                 })}
               </div>
             )}
+          </div>
+
+          {/* Notifications section */}
+          <div className="border-b border-border px-5 py-4">
+            <div className="mb-1 flex items-center gap-2">
+              {notificationsEnabled ? (
+                <Bell className="size-4 text-muted-foreground" />
+              ) : (
+                <BellOff className="size-4 text-muted-foreground" />
+              )}
+              <h3 className="text-sm font-semibold">Notifications</h3>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Receive native OS notifications when an agent finishes responding
+              while you&apos;re away.
+            </p>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Enable notifications</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notificationsEnabled}
+                onClick={toggleNotifications}
+                className="relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors"
+                style={{
+                  backgroundColor: notificationsEnabled
+                    ? "var(--color-primary)"
+                    : "var(--color-muted)",
+                  border: notificationsEnabled
+                    ? undefined
+                    : "1px solid var(--color-border)",
+                }}
+              >
+                <span
+                  className="inline-block size-4 rounded-full bg-white shadow-sm transition-transform"
+                  style={{
+                    transform: notificationsEnabled
+                      ? "translateX(18px)"
+                      : "translateX(2px)",
+                  }}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>
