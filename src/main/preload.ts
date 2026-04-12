@@ -16,8 +16,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("session:deleteMessages", sessionId),
 
   // Notifications
-  notificationSend: (title: string, body: string) =>
-    ipcRenderer.send("notification:send", title, body),
+  notificationSend: (title: string, body: string, sessionVisible: boolean) =>
+    ipcRenderer.send("notification:send", title, body, sessionVisible),
 
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),

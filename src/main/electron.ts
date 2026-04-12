@@ -98,9 +98,19 @@ ipcMain.handle("window:isMaximized", () => {
 
 // ── Notifications ─────────────────────────────────────────────────────
 
-ipcMain.on("notification:send", (_event, title: string, body: string) => {
-  new Notification({ title, body, icon: iconPath }).show();
-});
+ipcMain.on(
+  "notification:send",
+  (_event, title: string, body: string, sessionVisible: boolean) => {
+    // Only notify if the user can't see the response:
+    // - session is not the active/visible one, OR
+    // - the window is minimized or unfocused
+    const windowObscured =
+      !mainWindow || mainWindow.isMinimized() || !mainWindow.isFocused();
+    if (!sessionVisible || windowObscured) {
+      new Notification({ title, body, icon: iconPath }).show();
+    }
+  },
+);
 
 // ── IPC handlers for project operations ──────────────────────────────
 

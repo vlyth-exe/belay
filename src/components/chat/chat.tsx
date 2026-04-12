@@ -585,8 +585,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   }, [isSessionActive, isThinking, messages.length, markSeen, sessionId]);
 
   // Determine the visual status: running → unseen → idle.
-  // Also fires a native OS notification the first time a prompt completes
-  // while the session is not active.
+  // Also fires a native OS notification when a prompt finishes. The main
+  // process checks whether the window is minimised / unfocused to decide
+  // if the notification should actually be shown.
   const sessionTitle =
     activeProject?.sessions.find((s) => s.id === sessionId)?.title ?? "Chat";
 
@@ -594,7 +595,24 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     if (isThinking) {
       setStatus(sessionId, "running");
       notifiedRef.current = false;
-    } else if (isSessionActive) {
+      return;
+    }
+
+    // ── Prompt finished: send notification (main process checks window) ──
+    if (!notifiedRef.current && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.role === "assistant" && !lastMsg.isStreaming) {
+        notifiedRef.current = true;
+        window.electronAPI?.notificationSend(
+          sessionTitle,
+          "Agent finished responding",
+          isSessionActive,
+        );
+      }
+    }
+
+    // ── Status badge ──────────────────────────────────────────────
+    if (isSessionActive) {
       setStatus(sessionId, "idle");
     } else if (
       seenCountRef.current !== null &&
@@ -604,19 +622,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.role === "assistant" && !lastMsg.isStreaming) {
         setStatus(sessionId, "unseen");
-        if (!notifiedRef.current) {
-          notifiedRef.current = true;
-          window.electronAPI?.notificationSend(
-            sessionTitle,
-            "Agent finished responding",
-          );
-        }
       } else {
-        // Last message is a user message or still streaming — not unseen yet
         setStatus(sessionId, "idle");
       }
     } else {
-      // Fallback: no new messages, reset to idle so the spinner doesn't stick
       setStatus(sessionId, "idle");
     }
   }, [

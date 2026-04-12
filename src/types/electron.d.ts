@@ -26,7 +26,11 @@ export interface ElectronAPI {
   sessionDeleteMessages: (sessionId: string) => Promise<void>;
 
   // Notifications
-  notificationSend: (title: string, body: string) => void;
+  notificationSend: (
+    title: string,
+    body: string,
+    sessionVisible: boolean,
+  ) => void;
 
   // Window controls
   minimize: () => void;
