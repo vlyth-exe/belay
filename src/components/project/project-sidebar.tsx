@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   FolderOpen,
   X,
@@ -7,9 +7,13 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
+import { GroupDialog } from "./group-dialog";
+import type { Project } from "@/types/project";
 
 // ── Persisted expanded state ─────────────────────────────────────────
 
@@ -33,10 +37,80 @@ function persistExpanded(set: Set<string>): void {
   }
 }
 
+// ── Drag and drop types ────────────────────────────────────────────
+
+interface DragInfo {
+  kind: "project" | "session";
+  id: string;
+  projectId?: string;
+}
+
+interface DropIndicator {
+  kind: "project" | "session" | "group" | "ungroup";
+  targetId: string;
+  position: "before" | "after";
+}
+
+// ── Context menu types ─────────────────────────────────────────────
+
+type ContextMenuTarget =
+  | { kind: "project"; projectId: string }
+  | { kind: "session"; projectId: string; sessionId: string }
+  | { kind: "group"; projectId: string; groupId: string };
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  target: ContextMenuTarget;
+}
+
+// ── Group dialog state ─────────────────────────────────────────────
+
+interface GroupDialogConfig {
+  mode: "create" | "edit";
+  projectId: string;
+  groupId?: string;
+  initialName: string;
+  initialColor: string;
+  initialSessionIds?: string[];
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function findGroupForSession(project: Project, sessionId: string) {
+  return project.groups.find((g) => g.sessionIds.includes(sessionId));
+}
+
+// ── Component ───────────────────────────────────────────────────────
+
 export function ProjectSidebar() {
   const [isOpening, setIsOpening] = useState(false);
   const [expandedProjects, setExpandedProjects] =
     useState<Set<string>>(loadExpanded);
+
+  // Drag state
+  const dragInfoRef = useRef<DragInfo | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(
+    null,
+  );
+  const dropIndicatorRef = useRef<DropIndicator | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // Group dialog state — openKey increments each time so the inner form
+  // remounts with fresh initial values.
+  const [groupDialog, setGroupDialog] = useState<GroupDialogConfig | null>(
+    null,
+  );
+  const [groupDialogKey, setGroupDialogKey] = useState(0);
+
+  function setDrop(indicator: DropIndicator | null) {
+    dropIndicatorRef.current = indicator;
+    setDropIndicator(indicator);
+  }
+
+  // ── Store bindings ───────────────────────────────────────────────
 
   const {
     openProjects,
@@ -48,7 +122,100 @@ export function ProjectSidebar() {
     removeSession,
     setActiveSession,
     pathToId,
+    reorderProjects,
+    reorderSessions,
+    createGroup,
+    deleteGroup,
+    renameGroup,
+    setGroupColor,
+    addSessionToGroup,
+    removeSessionFromGroup,
+    toggleGroupCollapsed,
+    reorderGroupSessions,
   } = useProjectStore();
+
+  // ── Context menu helpers ─────────────────────────────────────────
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, target: ContextMenuTarget) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({ x: e.clientX, y: e.clientY, target });
+    },
+    [],
+  );
+
+  // Close context menu on scroll / resize / Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = closeContextMenu;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [contextMenu, closeContextMenu]);
+
+  // ── Group dialog helpers ─────────────────────────────────────────
+
+  const openCreateGroupDialog = useCallback(
+    (projectId: string, initialSessionIds?: string[]) => {
+      setGroupDialogKey((k) => k + 1);
+      setGroupDialog({
+        mode: "create",
+        projectId,
+        initialName: "",
+        initialColor: "#3b82f6",
+        initialSessionIds,
+      });
+    },
+    [],
+  );
+
+  const openEditGroupDialog = useCallback(
+    (projectId: string, groupId: string, name: string, color: string) => {
+      setGroupDialogKey((k) => k + 1);
+      setGroupDialog({
+        mode: "edit",
+        projectId,
+        groupId,
+        initialName: name,
+        initialColor: color,
+      });
+    },
+    [],
+  );
+
+  const handleGroupDialogSubmit = useCallback(
+    (data: { name: string; color: string }) => {
+      if (!groupDialog) return;
+      if (groupDialog.mode === "create") {
+        createGroup(
+          groupDialog.projectId,
+          data.name,
+          data.color,
+          groupDialog.initialSessionIds,
+        );
+      } else if (groupDialog.groupId) {
+        renameGroup(groupDialog.projectId, groupDialog.groupId, data.name);
+        setGroupColor(groupDialog.projectId, groupDialog.groupId, data.color);
+      }
+      setGroupDialog(null);
+    },
+    [groupDialog, createGroup, renameGroup, setGroupColor],
+  );
+
+  // ── Directory / project handlers ─────────────────────────────────
 
   const handleOpenDirectory = useCallback(async () => {
     setIsOpening(true);
@@ -130,6 +297,470 @@ export function ProjectSidebar() {
     [addSession],
   );
 
+  // ── Drag and drop (container-level handlers using closest()) ────
+
+  function handleDragEnd() {
+    dragInfoRef.current = null;
+    setDrop(null);
+  }
+
+  // ── Project list container handlers ─────────────────────────────
+
+  function handleProjectListDragStart(e: React.DragEvent) {
+    const sessionEl = (e.target as Element).closest("[data-session-id]");
+    if (sessionEl) return; // session drag — ignore in project container
+    const el = (e.target as Element).closest("[data-project-id]");
+    if (!el) return;
+    const id = (el as HTMLElement).dataset.projectId!;
+    e.dataTransfer.effectAllowed = "move";
+    dragInfoRef.current = { kind: "project", id };
+    setDrop(null);
+  }
+
+  function handleProjectListDragOver(e: React.DragEvent) {
+    const d = dragInfoRef.current;
+    if (!d || d.kind !== "project") return;
+    // Never treat a session area as a project drop target
+    if ((e.target as Element).closest("[data-session-id]")) return;
+    const el = (e.target as Element).closest("[data-project-id]");
+    if (!el) return;
+    const targetId = (el as HTMLElement).dataset.projectId!;
+    if (targetId === d.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = el.getBoundingClientRect();
+    setDrop({
+      kind: "project",
+      targetId,
+      position: e.clientY < rect.top + rect.height / 2 ? "before" : "after",
+    });
+  }
+
+  function handleProjectListDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const d = dragInfoRef.current;
+    const t = dropIndicatorRef.current;
+    if (!d || d.kind !== "project" || !t) return;
+    const ids = openProjects.map((p) => p.id);
+    const without = ids.filter((id) => id !== d.id);
+    const idx = without.indexOf(t.targetId);
+    if (idx === -1) return;
+    without.splice(t.position === "after" ? idx + 1 : idx, 0, d.id);
+    reorderProjects(without);
+    dragInfoRef.current = null;
+    setDrop(null);
+  }
+
+  // ── Session list container handlers ─────────────────────────────
+
+  function handleSessionListDragStart(e: React.DragEvent, projectId: string) {
+    e.stopPropagation();
+    const el = (e.target as Element).closest("[data-session-id]");
+    if (!el) return;
+    const id = (el as HTMLElement).dataset.sessionId!;
+    e.dataTransfer.effectAllowed = "move";
+    dragInfoRef.current = { kind: "session", id, projectId };
+    setDrop(null);
+  }
+
+  function handleSessionListDragOver(e: React.DragEvent, projectId: string) {
+    e.stopPropagation();
+    const d = dragInfoRef.current;
+    if (!d || d.kind !== "session" || d.projectId !== projectId) return;
+    const el = (e.target as Element).closest("[data-session-id]");
+    if (!el) {
+      // Check if we're over a group header — drop session into that group
+      const groupEl = (e.target as Element).closest("[data-group-id]");
+      if (groupEl) {
+        const groupId = (groupEl as HTMLElement).dataset.groupId!;
+        const project = openProjects.find((p) => p.id === projectId);
+        const group = project?.groups.find((g) => g.id === groupId);
+        if (group && !group.sessionIds.includes(d.id)) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDrop({ kind: "group", targetId: groupId, position: "after" });
+        }
+        return;
+      }
+      // Dragging over empty space — target the ungrouped area
+      const project = openProjects.find((p) => p.id === projectId);
+      if (project) {
+        const groupedIds = new Set(project.groups.flatMap((g) => g.sessionIds));
+        const ungrouped = project.sessions.filter((s) => !groupedIds.has(s.id));
+        if (ungrouped.length > 0) {
+          const last = ungrouped[ungrouped.length - 1];
+          if (last.id !== d.id) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            setDrop({
+              kind: "session",
+              targetId: last.id,
+              position: "after",
+            });
+          }
+        } else if (groupedIds.has(d.id)) {
+          // All sessions are grouped — allow drop to ungroup
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDrop({ kind: "ungroup", targetId: projectId, position: "after" });
+        }
+      }
+      return;
+    }
+    const targetId = (el as HTMLElement).dataset.sessionId!;
+    if (targetId === d.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = el.getBoundingClientRect();
+    setDrop({
+      kind: "session",
+      targetId,
+      position: e.clientY < rect.top + rect.height / 2 ? "before" : "after",
+    });
+  }
+
+  function handleSessionListDrop(e: React.DragEvent, projectId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const d = dragInfoRef.current;
+    const t = dropIndicatorRef.current;
+    if (!d || d.kind !== "session" || d.projectId !== projectId || !t) return;
+
+    const project = openProjects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    // Drop onto empty space (all sessions grouped) → ungroup
+    if (t.kind === "ungroup") {
+      const currentGroup = project.groups.find((g) =>
+        g.sessionIds.includes(d.id),
+      );
+      if (currentGroup) {
+        removeSessionFromGroup(projectId, currentGroup.id, d.id);
+      }
+      dragInfoRef.current = null;
+      setDrop(null);
+      return;
+    }
+
+    // Drop onto a group header → add session to that group
+    if (t.kind === "group") {
+      addSessionToGroup(projectId, t.targetId, d.id);
+      dragInfoRef.current = null;
+      setDrop(null);
+      return;
+    }
+
+    // Drop between sessions — group-aware reordering
+    const targetGroup = project.groups.find((g) =>
+      g.sessionIds.includes(t.targetId),
+    );
+
+    if (targetGroup) {
+      // Target is inside a group → insert into that group at position
+      const ids = targetGroup.sessionIds.filter((id) => id !== d.id);
+      const idx = ids.indexOf(t.targetId);
+      if (idx === -1) {
+        dragInfoRef.current = null;
+        setDrop(null);
+        return;
+      }
+      ids.splice(t.position === "after" ? idx + 1 : idx, 0, d.id);
+      reorderGroupSessions(projectId, targetGroup.id, ids);
+    } else {
+      // Target is ungrouped → remove from any current group + reorder flat list
+      const currentGroup = project.groups.find((g) =>
+        g.sessionIds.includes(d.id),
+      );
+      if (currentGroup) {
+        removeSessionFromGroup(projectId, currentGroup.id, d.id);
+      }
+      const ids = project.sessions.map((s) => s.id);
+      const without = ids.filter((id) => id !== d.id);
+      const idx = without.indexOf(t.targetId);
+      if (idx === -1) {
+        dragInfoRef.current = null;
+        setDrop(null);
+        return;
+      }
+      without.splice(t.position === "after" ? idx + 1 : idx, 0, d.id);
+      reorderSessions(projectId, without);
+    }
+
+    dragInfoRef.current = null;
+    setDrop(null);
+  }
+
+  function handleSessionListDragEnd() {
+    dragInfoRef.current = null;
+    setDrop(null);
+  }
+
+  // ── Render helpers ───────────────────────────────────────────────
+
+  /** Render a single session row. */
+  function renderSession(
+    session: { id: string; title: string },
+    project: { id: string; activeSessionId: string | null; isActive: boolean },
+    extraIndent = false,
+  ) {
+    const isSessionActive =
+      project.isActive && session.id === project.activeSessionId;
+    const isSessionDragging =
+      dragInfoRef.current?.kind === "session" &&
+      dragInfoRef.current.id === session.id;
+    const isSessionDropBefore =
+      dropIndicator?.kind === "session" &&
+      dropIndicator.targetId === session.id &&
+      dropIndicator.position === "before";
+    const isSessionDropAfter =
+      dropIndicator?.kind === "session" &&
+      dropIndicator.targetId === session.id &&
+      dropIndicator.position === "after";
+
+    const indentClass = extraIndent ? "ml-3" : "";
+
+    return (
+      <div key={session.id} className={indentClass}>
+        {isSessionDropBefore && (
+          <div
+            className={[
+              "h-0.5 rounded-full bg-primary mb-0.5",
+              extraIndent ? "-ml-3" : "-ml-2",
+            ].join(" ")}
+          />
+        )}
+
+        <button
+          type="button"
+          data-session-id={session.id}
+          draggable
+          onClick={() => setActiveSession(project.id, session.id)}
+          onContextMenu={(e) =>
+            handleContextMenu(e, {
+              kind: "session",
+              projectId: project.id,
+              sessionId: session.id,
+            })
+          }
+          style={isSessionDragging ? { opacity: 0.4 } : undefined}
+          className={[
+            "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-grab active:cursor-grabbing",
+            isSessionActive
+              ? "bg-muted/70 text-foreground"
+              : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+          ].join(" ")}
+        >
+          <MessageSquare
+            className={[
+              "size-3 shrink-0",
+              isSessionActive ? "text-primary" : "text-muted-foreground/50",
+            ].join(" ")}
+          />
+
+          <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
+            {session.title}
+          </span>
+
+          <button
+            type="button"
+            onClick={(e) => handleCloseSession(e, project.id, session.id)}
+            className={[
+              "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
+              isSessionActive
+                ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                : "text-transparent group-hover/session:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+            ].join(" ")}
+            aria-label={`Close ${session.title}`}
+          >
+            <X className="size-2.5" />
+          </button>
+        </button>
+
+        {isSessionDropAfter && (
+          <div
+            className={[
+              "h-0.5 rounded-full bg-primary mt-0.5",
+              extraIndent ? "-ml-3" : "-ml-2",
+            ].join(" ")}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Render context menu ──────────────────────────────────────────
+
+  const renderContextMenu = () => {
+    if (!contextMenu) return null;
+    const { target } = contextMenu;
+
+    const project = openProjects.find((p) =>
+      "projectId" in target ? p.id === target.projectId : false,
+    );
+
+    // Clamp position so menu stays within viewport
+    const menuX = Math.min(contextMenu.x, window.innerWidth - 200);
+    const menuY = Math.min(contextMenu.y, window.innerHeight - 200);
+
+    return (
+      <>
+        {/* Invisible overlay to detect clicks outside */}
+        <div
+          className="fixed inset-0 z-40"
+          onClick={closeContextMenu}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            closeContextMenu();
+          }}
+        />
+        <div
+          className="fixed z-50 min-w-45 max-w-70 rounded-lg border border-border bg-background p-1 shadow-xl"
+          style={{ left: menuX, top: menuY }}
+        >
+          {/* ── Project context menu ── */}
+          {target.kind === "project" && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
+              onClick={() => {
+                openCreateGroupDialog(target.projectId);
+                closeContextMenu();
+              }}
+            >
+              <Plus className="size-3.5 shrink-0" />
+              Create Group
+            </button>
+          )}
+
+          {/* ── Session context menu ── */}
+          {target.kind === "session" && project && (
+            <>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
+                onClick={() => {
+                  openCreateGroupDialog(target.projectId, [target.sessionId]);
+                  closeContextMenu();
+                }}
+              >
+                <Plus className="size-3.5 shrink-0" />
+                Create Group with Session
+              </button>
+
+              {/* Add to existing groups */}
+              {project.groups.length > 0 && (
+                <>
+                  <div className="my-1 h-px bg-border" />
+                  <div className="px-2.5 py-1 text-[10px] font-medium text-muted-foreground uppercase">
+                    Add to Group
+                  </div>
+                  {project.groups.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
+                      onClick={() => {
+                        addSessionToGroup(
+                          target.projectId,
+                          g.id,
+                          target.sessionId,
+                        );
+                        closeContextMenu();
+                      }}
+                    >
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: g.color }}
+                      />
+                      <span className="truncate">{g.name}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {/* Remove from current group */}
+              {(() => {
+                const currentGroup = findGroupForSession(
+                  project,
+                  target.sessionId,
+                );
+                if (!currentGroup) return null;
+                return (
+                  <>
+                    <div className="my-1 h-px bg-border" />
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
+                      onClick={() => {
+                        removeSessionFromGroup(
+                          target.projectId,
+                          currentGroup.id,
+                          target.sessionId,
+                        );
+                        closeContextMenu();
+                      }}
+                    >
+                      <X className="size-3.5 shrink-0" />
+                      <span className="truncate">
+                        Remove from &ldquo;{currentGroup.name}&rdquo;
+                      </span>
+                    </button>
+                  </>
+                );
+              })()}
+            </>
+          )}
+
+          {/* ── Group context menu ── */}
+          {target.kind === "group" && project && (
+            <>
+              {(() => {
+                const group = project.groups.find(
+                  (g) => g.id === target.groupId,
+                );
+                if (!group) return null;
+                return (
+                  <>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
+                      onClick={() => {
+                        openEditGroupDialog(
+                          target.projectId,
+                          group.id,
+                          group.name,
+                          group.color,
+                        );
+                        closeContextMenu();
+                      }}
+                    >
+                      <Pencil className="size-3.5 shrink-0" />
+                      Rename / Edit Colour
+                    </button>
+                    <div className="my-1 h-px bg-border" />
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-destructive transition-colors hover:bg-destructive/10"
+                      onClick={() => {
+                        deleteGroup(target.projectId, target.groupId);
+                        closeContextMenu();
+                      }}
+                    >
+                      <Trash2 className="size-3.5 shrink-0" />
+                      Delete Group
+                    </button>
+                  </>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // ── Main render ──────────────────────────────────────────────────
+
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-background/50">
       {/* Header */}
@@ -153,24 +784,63 @@ export function ProjectSidebar() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-0.5 px-1.5">
+          <div
+            className="flex flex-col gap-0.5 px-1.5"
+            onDragStart={handleProjectListDragStart}
+            onDragOver={handleProjectListDragOver}
+            onDrop={handleProjectListDrop}
+            onDragEnd={handleDragEnd}
+          >
             {openProjects.map((project) => {
               const isActive = project.id === activeProjectId;
               const isExpanded = expandedProjects.has(project.id);
-              // Active project with a session cannot be collapsed
               const canCollapse = !(isActive && project.activeSessionId);
+              const isDragging =
+                dragInfoRef.current?.kind === "project" &&
+                dragInfoRef.current.id === project.id;
+              const isDropBefore =
+                dropIndicator?.kind === "project" &&
+                dropIndicator.targetId === project.id &&
+                dropIndicator.position === "before";
+              const isDropAfter =
+                dropIndicator?.kind === "project" &&
+                dropIndicator.targetId === project.id &&
+                dropIndicator.position === "after";
+
+              // Compute grouped / ungrouped sessions
+              const groupedSessionIds = new Set(
+                project.groups.flatMap((g) => g.sessionIds),
+              );
+              const ungroupedSessions = project.sessions.filter(
+                (s) => !groupedSessionIds.has(s.id),
+              );
 
               return (
                 <div key={project.id}>
-                  {/* Project row */}
+                  {/* ── Project row ── */}
                   <button
                     type="button"
+                    data-project-id={project.id}
+                    draggable
                     onClick={() => handleProjectClick(project.id)}
+                    onContextMenu={(e) =>
+                      handleContextMenu(e, {
+                        kind: "project",
+                        projectId: project.id,
+                      })
+                    }
+                    style={isDragging ? { opacity: 0.4 } : undefined}
                     className={[
-                      "group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                      "group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors cursor-grab active:cursor-grabbing",
                       isActive
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                      isDropBefore
+                        ? "border-t-2 border-primary rounded-t-none"
+                        : "",
+                      isDropAfter
+                        ? "border-b-2 border-primary rounded-b-none"
+                        : "",
                     ].join(" ")}
                   >
                     {/* Expand chevron */}
@@ -210,7 +880,7 @@ export function ProjectSidebar() {
                       </div>
                     </div>
 
-                    {/* New chat button (visible on hover when active) */}
+                    {/* New chat button */}
                     {isActive && (
                       <button
                         type="button"
@@ -238,58 +908,105 @@ export function ProjectSidebar() {
                     </button>
                   </button>
 
-                  {/* Session sub-items */}
+                  {/* ── Session sub-items ── */}
                   {isExpanded && (
-                    <div className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2">
-                      {project.sessions.map((session) => {
-                        const isSessionActive =
-                          isActive && session.id === project.activeSessionId;
+                    <div
+                      className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2"
+                      onDragStart={(e) =>
+                        handleSessionListDragStart(e, project.id)
+                      }
+                      onDragOver={(e) =>
+                        handleSessionListDragOver(e, project.id)
+                      }
+                      onDrop={(e) => handleSessionListDrop(e, project.id)}
+                      onDragEnd={handleSessionListDragEnd}
+                    >
+                      {/* ── Groups ── */}
+                      {project.groups.map((group) => {
+                        // Resolve sessions that still exist in this group
+                        const groupSessions = group.sessionIds
+                          .map((sid) =>
+                            project.sessions.find((s) => s.id === sid),
+                          )
+                          .filter(
+                            (s): s is NonNullable<typeof s> => s !== undefined,
+                          );
+
+                        const isGroupDropTarget =
+                          dropIndicator?.kind === "group" &&
+                          dropIndicator.targetId === group.id;
 
                         return (
-                          <button
-                            key={session.id}
-                            type="button"
-                            onClick={() =>
-                              setActiveSession(project.id, session.id)
-                            }
-                            className={[
-                              "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
-                              isSessionActive
-                                ? "bg-muted/70 text-foreground"
-                                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-                            ].join(" ")}
-                          >
-                            <MessageSquare
-                              className={[
-                                "size-3 shrink-0",
-                                isSessionActive
-                                  ? "text-primary"
-                                  : "text-muted-foreground/50",
-                              ].join(" ")}
-                            />
-
-                            <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
-                              {session.title}
-                            </span>
-
+                          <div key={group.id} className="mt-0.5">
+                            {/* Group header (also a drop target for sessions) */}
                             <button
                               type="button"
-                              onClick={(e) =>
-                                handleCloseSession(e, project.id, session.id)
+                              data-group-id={group.id}
+                              onClick={() =>
+                                toggleGroupCollapsed(project.id, group.id)
+                              }
+                              onContextMenu={(e) =>
+                                handleContextMenu(e, {
+                                  kind: "group",
+                                  projectId: project.id,
+                                  groupId: group.id,
+                                })
                               }
                               className={[
-                                "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
-                                isSessionActive
-                                  ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
-                                  : "text-transparent group-hover/session:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+                                "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors",
+                                isGroupDropTarget
+                                  ? "ring-2 ring-primary/60 bg-primary/10"
+                                  : "hover:bg-muted/40",
                               ].join(" ")}
-                              aria-label={`Close ${session.title}`}
                             >
-                              <X className="size-2.5" />
+                              {group.collapsed ? (
+                                <ChevronRight className="size-2.5 shrink-0 text-muted-foreground/60" />
+                              ) : (
+                                <ChevronDown className="size-2.5 shrink-0 text-muted-foreground/60" />
+                              )}
+                              <span
+                                className="size-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: group.color }}
+                              />
+                              <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-muted-foreground">
+                                {group.name}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                                {groupSessions.length}
+                              </span>
                             </button>
-                          </button>
+
+                            {/* Group sessions (visible when not collapsed) */}
+                            {!group.collapsed &&
+                              groupSessions.map((session) =>
+                                renderSession(
+                                  session,
+                                  {
+                                    id: project.id,
+                                    activeSessionId: project.activeSessionId,
+                                    isActive,
+                                  },
+                                  /* extraIndent */ true,
+                                ),
+                              )}
+                          </div>
                         );
                       })}
+
+                      {/* ── Ungrouped sessions ── */}
+                      {ungroupedSessions.map((session) =>
+                        renderSession(session, {
+                          id: project.id,
+                          activeSessionId: project.activeSessionId,
+                          isActive,
+                        }),
+                      )}
+
+                      {/* Drop-to-ungroup indicator (shows when all sessions are grouped) */}
+                      {dropIndicator?.kind === "ungroup" &&
+                        dropIndicator.targetId === project.id && (
+                          <div className="h-0.5 rounded-full bg-primary -ml-2 mb-0.5" />
+                        )}
 
                       {/* Add chat button inside expanded section */}
                       <button
@@ -331,6 +1048,21 @@ export function ProjectSidebar() {
           )}
         </Button>
       </div>
+
+      {/* Context menu (rendered as portal-like fixed overlay) */}
+      {renderContextMenu()}
+
+      {/* Group create / edit dialog */}
+      <GroupDialog
+        open={groupDialog !== null}
+        openKey={groupDialogKey}
+        onClose={() => setGroupDialog(null)}
+        onSubmit={handleGroupDialogSubmit}
+        title={groupDialog?.mode === "edit" ? "Edit Group" : "Create Group"}
+        initialName={groupDialog?.initialName ?? ""}
+        initialColor={groupDialog?.initialColor ?? "#3b82f6"}
+        submitLabel={groupDialog?.mode === "edit" ? "Save" : "Create"}
+      />
     </aside>
   );
 }

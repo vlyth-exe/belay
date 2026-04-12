@@ -5,6 +5,7 @@ export interface Project {
   lastOpened: Date;
   sessions: ChatSession[];
   activeSessionId: string | null;
+  groups: SessionGroup[];
 }
 
 export interface ChatSession {
@@ -12,4 +13,12 @@ export interface ChatSession {
   title: string;
   createdAt: Date;
   agentId: string | null;
+}
+
+export interface SessionGroup {
+  id: string;
+  name: string;
+  color: string;
+  sessionIds: string[];
+  collapsed: boolean;
 }

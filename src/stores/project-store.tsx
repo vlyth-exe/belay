@@ -6,7 +6,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import type { Project, ChatSession } from "@/types/project";
+import type { Project, ChatSession, SessionGroup } from "@/types/project";
 
 // ── State shape ────────────────────────────────────────────────────────
 
@@ -35,6 +35,55 @@ type ProjectAction =
       projectId: string;
       sessionId: string;
       agentId: string | null;
+    }
+  | { type: "REORDER_PROJECTS"; projectIds: string[] }
+  | { type: "REORDER_SESSIONS"; projectId: string; sessionIds: string[] }
+  | {
+      type: "CREATE_GROUP";
+      projectId: string;
+      group: SessionGroup;
+      initialSessionIds?: string[];
+    }
+  | { type: "DELETE_GROUP"; projectId: string; groupId: string }
+  | {
+      type: "RENAME_GROUP";
+      projectId: string;
+      groupId: string;
+      name: string;
+    }
+  | {
+      type: "SET_GROUP_COLOR";
+      projectId: string;
+      groupId: string;
+      color: string;
+    }
+  | {
+      type: "ADD_SESSION_TO_GROUP";
+      projectId: string;
+      groupId: string;
+      sessionId: string;
+    }
+  | {
+      type: "REMOVE_SESSION_FROM_GROUP";
+      projectId: string;
+      groupId: string;
+      sessionId: string;
+    }
+  | {
+      type: "TOGGLE_GROUP_COLLAPSED";
+      projectId: string;
+      groupId: string;
+    }
+  | {
+      type: "REORDER_GROUPS";
+      projectId: string;
+      groupIds: string[];
+    }
+  | {
+      type: "REORDER_GROUP_SESSIONS";
+      projectId: string;
+      groupId: string;
+      sessionIds: string[];
     };
 
 // ── Context value ──────────────────────────────────────────────────────
@@ -52,6 +101,34 @@ interface ProjectStoreContextValue extends ProjectState {
     projectId: string,
     sessionId: string,
     agentId: string | null,
+  ) => void;
+  reorderProjects: (projectIds: string[]) => void;
+  reorderSessions: (projectId: string, sessionIds: string[]) => void;
+  createGroup: (
+    projectId: string,
+    name: string,
+    color: string,
+    initialSessionIds?: string[],
+  ) => string;
+  deleteGroup: (projectId: string, groupId: string) => void;
+  renameGroup: (projectId: string, groupId: string, name: string) => void;
+  setGroupColor: (projectId: string, groupId: string, color: string) => void;
+  addSessionToGroup: (
+    projectId: string,
+    groupId: string,
+    sessionId: string,
+  ) => void;
+  removeSessionFromGroup: (
+    projectId: string,
+    groupId: string,
+    sessionId: string,
+  ) => void;
+  toggleGroupCollapsed: (projectId: string, groupId: string) => void;
+  reorderGroups: (projectId: string, groupIds: string[]) => void;
+  reorderGroupSessions: (
+    projectId: string,
+    groupId: string,
+    sessionIds: string[],
   ) => void;
 }
 
@@ -80,9 +157,17 @@ function makeDefaultSession(): ChatSession {
 
 // ── Persistence ────────────────────────────────────────────────────────
 
-interface SerializedProject extends Omit<Project, "lastOpened" | "sessions"> {
+interface SerializedGroup extends Omit<SessionGroup, "sessionIds"> {
+  sessionIds: string[];
+}
+
+interface SerializedProject extends Omit<
+  Project,
+  "lastOpened" | "sessions" | "groups"
+> {
   lastOpened: string;
   sessions: Array<Omit<ChatSession, "createdAt"> & { createdAt: string }>;
+  groups: SerializedGroup[];
 }
 
 function ensureSessions(project: SerializedProject): Project {
@@ -96,11 +181,17 @@ function ensureSessions(project: SerializedProject): Project {
     const defaultSession = makeDefaultSession();
     sessions.push(defaultSession);
   }
+  // Backward compat: projects loaded from storage before groups existed
+  const groups = (project.groups ?? []).map((g) => ({
+    ...g,
+    sessionIds: g.sessionIds ?? [],
+  }));
   return {
     ...project,
     lastOpened: new Date(project.lastOpened),
     sessions,
     activeSessionId: project.activeSessionId ?? sessions[0].id ?? null,
+    groups,
   };
 }
 
@@ -167,6 +258,7 @@ function projectReducer(
         lastOpened: new Date(),
         sessions: [defaultSession],
         activeSessionId: defaultSession.id,
+        groups: [],
       };
 
       return {
@@ -240,10 +332,18 @@ function projectReducer(
                   ? remaining[remaining.length - 1].id
                   : null
                 : p.activeSessionId;
+            // Also remove session from any group it belongs to
+            const updatedGroups = p.groups.map((g) => ({
+              ...g,
+              sessionIds: g.sessionIds.filter(
+                (sid) => sid !== action.sessionId,
+              ),
+            }));
             return {
               ...p,
               sessions: remaining,
               activeSessionId: newActiveSessionId,
+              groups: updatedGroups,
             };
           },
         ),
@@ -296,6 +396,231 @@ function projectReducer(
       };
     }
 
+    case "REORDER_PROJECTS": {
+      const idSet = new Set(action.projectIds);
+      const ordered = action.projectIds
+        .map((id) => state.openProjects.find((p) => p.id === id))
+        .filter((p): p is Project => p !== undefined);
+      const remaining = state.openProjects.filter((p) => !idSet.has(p.id));
+      return {
+        ...state,
+        openProjects: [...ordered, ...remaining],
+      };
+    }
+
+    case "REORDER_SESSIONS": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => {
+            const idSet = new Set(action.sessionIds);
+            const ordered = action.sessionIds
+              .map((id) => p.sessions.find((s) => s.id === id))
+              .filter((s): s is ChatSession => s !== undefined);
+            const remaining = p.sessions.filter((s) => !idSet.has(s.id));
+            const newSessions = [...ordered, ...remaining];
+            // Keep activeSessionId pointing to the same session; if it no
+            // longer exists, fall back to the first session
+            const newActiveSessionId = newSessions.some(
+              (s) => s.id === p.activeSessionId,
+            )
+              ? p.activeSessionId
+              : (newSessions[0]?.id ?? null);
+            return {
+              ...p,
+              sessions: newSessions,
+              activeSessionId: newActiveSessionId,
+            };
+          },
+        ),
+      };
+    }
+
+    case "CREATE_GROUP": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => {
+            const group = action.group;
+            // If initialSessionIds provided, remove them from other groups first
+            const initialIds = new Set(action.initialSessionIds ?? []);
+            const cleanedGroups = p.groups.map((g) => ({
+              ...g,
+              sessionIds: g.sessionIds.filter((sid) => !initialIds.has(sid)),
+            }));
+            return {
+              ...p,
+              groups: [...cleanedGroups, group],
+            };
+          },
+        ),
+      };
+    }
+
+    case "DELETE_GROUP": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.filter((g) => g.id !== action.groupId),
+          }),
+        ),
+      };
+    }
+
+    case "RENAME_GROUP": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) =>
+              g.id === action.groupId ? { ...g, name: action.name } : g,
+            ),
+          }),
+        ),
+      };
+    }
+
+    case "SET_GROUP_COLOR": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) =>
+              g.id === action.groupId ? { ...g, color: action.color } : g,
+            ),
+          }),
+        ),
+      };
+    }
+
+    case "ADD_SESSION_TO_GROUP": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) => {
+              if (g.id !== action.groupId) {
+                // Remove from other groups
+                return {
+                  ...g,
+                  sessionIds: g.sessionIds.filter(
+                    (sid) => sid !== action.sessionId,
+                  ),
+                };
+              }
+              // Add to target group (avoid duplicates)
+              if (g.sessionIds.includes(action.sessionId)) return g;
+              return {
+                ...g,
+                sessionIds: [...g.sessionIds, action.sessionId],
+              };
+            }),
+          }),
+        ),
+      };
+    }
+
+    case "REMOVE_SESSION_FROM_GROUP": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) =>
+              g.id === action.groupId
+                ? {
+                    ...g,
+                    sessionIds: g.sessionIds.filter(
+                      (sid) => sid !== action.sessionId,
+                    ),
+                  }
+                : g,
+            ),
+          }),
+        ),
+      };
+    }
+
+    case "TOGGLE_GROUP_COLLAPSED": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) =>
+              g.id === action.groupId ? { ...g, collapsed: !g.collapsed } : g,
+            ),
+          }),
+        ),
+      };
+    }
+
+    case "REORDER_GROUPS": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => {
+            const idSet = new Set(action.groupIds);
+            const ordered = action.groupIds
+              .map((id) => p.groups.find((g) => g.id === id))
+              .filter((g): g is SessionGroup => g !== undefined);
+            const remaining = p.groups.filter((g) => !idSet.has(g.id));
+            return {
+              ...p,
+              groups: [...ordered, ...remaining],
+            };
+          },
+        ),
+      };
+    }
+
+    case "REORDER_GROUP_SESSIONS": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) => {
+              if (g.id === action.groupId) {
+                return { ...g, sessionIds: action.sessionIds };
+              }
+              // Remove any sessions that moved into the target group
+              const movedSet = new Set(action.sessionIds);
+              return {
+                ...g,
+                sessionIds: g.sessionIds.filter((sid) => !movedSet.has(sid)),
+              };
+            }),
+          }),
+        ),
+      };
+    }
+
     default:
       return state;
   }
@@ -328,6 +653,7 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         lastOpened: new Date(),
         sessions: [],
         activeSessionId: null,
+        groups: [],
       },
     });
   }, []);
@@ -405,6 +731,109 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const reorderProjects = useCallback((projectIds: string[]) => {
+    dispatch({ type: "REORDER_PROJECTS", projectIds });
+  }, []);
+
+  const reorderSessions = useCallback(
+    (projectId: string, sessionIds: string[]) => {
+      dispatch({ type: "REORDER_SESSIONS", projectId, sessionIds });
+    },
+    [],
+  );
+
+  // ── Group actions ────────────────────────────────────────────────
+
+  const createGroup = useCallback(
+    (
+      projectId: string,
+      name: string,
+      color: string,
+      initialSessionIds?: string[],
+    ): string => {
+      const group: SessionGroup = {
+        id: crypto.randomUUID(),
+        name,
+        color,
+        sessionIds: initialSessionIds ?? [],
+        collapsed: false,
+      };
+      dispatch({
+        type: "CREATE_GROUP",
+        projectId,
+        group,
+        initialSessionIds,
+      });
+      return group.id;
+    },
+    [],
+  );
+
+  const deleteGroup = useCallback((projectId: string, groupId: string) => {
+    dispatch({ type: "DELETE_GROUP", projectId, groupId });
+  }, []);
+
+  const renameGroup = useCallback(
+    (projectId: string, groupId: string, name: string) => {
+      dispatch({ type: "RENAME_GROUP", projectId, groupId, name });
+    },
+    [],
+  );
+
+  const setGroupColor = useCallback(
+    (projectId: string, groupId: string, color: string) => {
+      dispatch({ type: "SET_GROUP_COLOR", projectId, groupId, color });
+    },
+    [],
+  );
+
+  const addSessionToGroup = useCallback(
+    (projectId: string, groupId: string, sessionId: string) => {
+      dispatch({
+        type: "ADD_SESSION_TO_GROUP",
+        projectId,
+        groupId,
+        sessionId,
+      });
+    },
+    [],
+  );
+
+  const removeSessionFromGroup = useCallback(
+    (projectId: string, groupId: string, sessionId: string) => {
+      dispatch({
+        type: "REMOVE_SESSION_FROM_GROUP",
+        projectId,
+        groupId,
+        sessionId,
+      });
+    },
+    [],
+  );
+
+  const toggleGroupCollapsed = useCallback(
+    (projectId: string, groupId: string) => {
+      dispatch({ type: "TOGGLE_GROUP_COLLAPSED", projectId, groupId });
+    },
+    [],
+  );
+
+  const reorderGroups = useCallback((projectId: string, groupIds: string[]) => {
+    dispatch({ type: "REORDER_GROUPS", projectId, groupIds });
+  }, []);
+
+  const reorderGroupSessions = useCallback(
+    (projectId: string, groupId: string, sessionIds: string[]) => {
+      dispatch({
+        type: "REORDER_GROUP_SESSIONS",
+        projectId,
+        groupId,
+        sessionIds,
+      });
+    },
+    [],
+  );
+
   return (
     <ProjectStoreContext.Provider
       value={{
@@ -418,6 +847,17 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         setActiveSession,
         renameSession,
         setSessionAgent,
+        reorderProjects,
+        reorderSessions,
+        createGroup,
+        deleteGroup,
+        renameGroup,
+        setGroupColor,
+        addSessionToGroup,
+        removeSessionFromGroup,
+        toggleGroupCollapsed,
+        reorderGroups,
+        reorderGroupSessions,
       }}
     >
       {children}
