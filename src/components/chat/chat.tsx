@@ -566,14 +566,16 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     }
   }, [isLoaded, messages.length]);
 
-  // While the session is active, keep the seen-count in sync and
-  // clear any unseen badge.
+  // While the session is active AND not thinking, keep the seen-count
+  // in sync and clear any unseen badge.  We exclude the thinking state
+  // so that streaming assistant messages aren't counted as "seen" —
+  // otherwise switching away mid-response would never trigger "unseen".
   useEffect(() => {
-    if (isSessionActive) {
+    if (isSessionActive && !isThinking) {
       seenCountRef.current = messages.length;
       markSeen(sessionId);
     }
-  }, [isSessionActive, messages.length, markSeen, sessionId]);
+  }, [isSessionActive, isThinking, messages.length, markSeen, sessionId]);
 
   // Determine the visual status: running → unseen → idle.
   useEffect(() => {
@@ -589,7 +591,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.role === "assistant" && !lastMsg.isStreaming) {
         setStatus(sessionId, "unseen");
+      } else {
+        // Last message is a user message or still streaming — not unseen yet
+        setStatus(sessionId, "idle");
       }
+    } else {
+      // Fallback: no new messages, reset to idle so the spinner doesn't stick
+      setStatus(sessionId, "idle");
     }
   }, [messages, isThinking, isSessionActive, sessionId, setStatus]);
 
