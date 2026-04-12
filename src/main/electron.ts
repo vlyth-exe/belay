@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
 import * as path from "node:path";
 import { connectionManager } from "./acp/connection-manager.js";
+import { terminalManager } from "./terminal.js";
 import {
   loadSessionMessages,
   saveSessionMessages,
@@ -67,11 +68,15 @@ function createWindow(): void {
   }
 
   mainWindow.on("closed", () => {
+    terminalManager.killAll();
     mainWindow = null;
   });
 
   // Set the main window for the ACP connection manager
   connectionManager.setMainWindow(mainWindow);
+
+  // Set the main window for the terminal manager
+  terminalManager.setMainWindow(mainWindow);
 }
 
 // ── IPC handlers for window controls ──────────────────────────────────
@@ -271,6 +276,27 @@ ipcMain.handle(
   },
 );
 
+// ── IPC handlers for terminal operations ──────────────────────────────
+
+ipcMain.handle("terminal:spawn", async (_event, id: string, cwd?: string) => {
+  terminalManager.spawn(id, cwd);
+});
+
+ipcMain.on("terminal:write", (_event, id: string, data: string) => {
+  terminalManager.write(id, data);
+});
+
+ipcMain.on(
+  "terminal:resize",
+  (_event, id: string, cols: number, rows: number) => {
+    terminalManager.resize(id, cols, rows);
+  },
+);
+
+ipcMain.on("terminal:kill", (_event, id: string) => {
+  terminalManager.kill(id);
+});
+
 // Notify renderer when maximize state changes
 function broadcastMaximizeState(): void {
   if (!mainWindow) return;
@@ -299,6 +325,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   connectionManager.dispose();
+  terminalManager.dispose();
   if (process.platform !== "darwin") {
     app.quit();
   }

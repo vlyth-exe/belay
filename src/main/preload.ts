@@ -144,4 +144,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   acpRespondPermission: (requestId: string, optionId: string) =>
     ipcRenderer.invoke("acp:respondPermission", requestId, optionId),
+
+  // Terminal
+  terminalSpawn: (id: string, cwd?: string) =>
+    ipcRenderer.invoke("terminal:spawn", id, cwd),
+  terminalWrite: (id: string, data: string) =>
+    ipcRenderer.send("terminal:write", id, data),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    ipcRenderer.send("terminal:resize", id, cols, rows),
+  terminalKill: (id: string) => ipcRenderer.send("terminal:kill", id),
+  onTerminalData: (id: string, callback: (data: string) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { id: string; data: string },
+    ) => {
+      if (payload.id === id) callback(payload.data);
+    };
+    ipcRenderer.on("terminal:data", handler);
+    return () => ipcRenderer.removeListener("terminal:data", handler);
+  },
+  onTerminalExit: (id: string, callback: (exitCode: number) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { id: string; exitCode: number },
+    ) => {
+      if (payload.id === id) callback(payload.exitCode);
+    };
+    ipcRenderer.on("terminal:exit", handler);
+    return () => ipcRenderer.removeListener("terminal:exit", handler);
+  },
 });
