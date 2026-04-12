@@ -561,7 +561,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // Track whether we've already fired a native notification for the
   // current completion so we don't spam the user on re-renders.
-  const notifiedRef = useRef(false);
+  // Starts as true so sessions loaded from disk don't fire notifications
+  // on mount. Gets reset to false only when isThinking becomes true.
+  const notifiedRef = useRef(true);
 
   // Snapshot the message count once the initial load finishes so
   // previously-saved messages aren't treated as "unseen".
@@ -575,11 +577,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // in sync and clear any unseen badge.  We exclude the thinking state
   // so that streaming assistant messages aren't counted as "seen" —
   // otherwise switching away mid-response would never trigger "unseen".
-  // Also reset the notification flag so a new completion can notify again.
   useEffect(() => {
     if (isSessionActive && !isThinking) {
       seenCountRef.current = messages.length;
-      notifiedRef.current = false;
       markSeen(sessionId);
     }
   }, [isSessionActive, isThinking, messages.length, markSeen, sessionId]);
