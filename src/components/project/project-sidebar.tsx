@@ -9,9 +9,12 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
+  Loader2,
+  Circle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
+import { useSessionStatusRead } from "@/stores/session-status-store";
 import { GroupDialog } from "./group-dialog";
 import type { Project } from "@/types/project";
 
@@ -109,6 +112,9 @@ export function ProjectSidebar() {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
     null,
   );
+
+  // Session status read (re-renders sidebar when any status changes)
+  const { getStatus } = useSessionStatusRead();
 
   function setDrop(indicator: DropIndicator | null) {
     dropIndicatorRef.current = indicator;
@@ -582,6 +588,31 @@ export function ProjectSidebar() {
 
   // ── Render helpers ───────────────────────────────────────────────
 
+  /** Render a status icon for a session. */
+  function SessionStatusIcon({
+    sessionId,
+    isActive,
+  }: {
+    sessionId: string;
+    isActive: boolean;
+  }) {
+    const status = getStatus(sessionId);
+    const iconClass = [
+      "size-3 shrink-0",
+      isActive ? "text-primary" : "text-muted-foreground/50",
+    ].join(" ");
+
+    if (status === "running") {
+      return <Loader2 className={[iconClass, "animate-spin"].join(" ")} />;
+    }
+    if (status === "unseen") {
+      return (
+        <Circle className={iconClass} fill="currentColor" strokeWidth={0} />
+      );
+    }
+    return <MessageSquare className={iconClass} />;
+  }
+
   /** Render a single session row. */
   function renderSession(
     session: { id: string; title: string },
@@ -635,11 +666,9 @@ export function ProjectSidebar() {
               : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
           ].join(" ")}
         >
-          <MessageSquare
-            className={[
-              "size-3 shrink-0",
-              isSessionActive ? "text-primary" : "text-muted-foreground/50",
-            ].join(" ")}
+          <SessionStatusIcon
+            sessionId={session.id}
+            isActive={isSessionActive}
           />
 
           {renamingSessionId === session.id ? (
@@ -1193,13 +1222,9 @@ export function ProjectSidebar() {
                                     : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
                                 ].join(" ")}
                               >
-                                <MessageSquare
-                                  className={[
-                                    "size-3 shrink-0",
-                                    isSessionActive
-                                      ? "text-primary"
-                                      : "text-muted-foreground/50",
-                                  ].join(" ")}
+                                <SessionStatusIcon
+                                  sessionId={session.id}
+                                  isActive={isSessionActive}
                                 />
 
                                 {renamingSessionId === session.id ? (

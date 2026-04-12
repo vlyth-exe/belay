@@ -12,6 +12,7 @@ import {
   useInstalledHarnesses,
 } from "@/hooks/use-acp";
 import { useSessionMessages, useMessageStore } from "@/stores/message-store";
+import { useSessionStatusWrite } from "@/stores/session-status-store";
 import { useProjectStore } from "@/stores/project-store";
 
 // ── Block helpers ────────────────────────────────────────────────────
@@ -155,6 +156,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   );
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ── Session status ──────────────────────────────────────────────
+  const { setStatus, markSeen } = useSessionStatusWrite();
+
   // ── Agent selection ───────────────────────────────────────────────
   const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
   const agentSelectorRef = useRef<HTMLDivElement>(null);
@@ -167,10 +171,12 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     addSession,
     setActiveSession,
   } = useProjectStore();
+  const activeProject = openProjects.find((p) => p.id === projectId);
+  const isSessionActive =
+    activeProject?.id === projectId &&
+    activeProject?.activeSessionId === sessionId;
   const agentId =
-    openProjects
-      .find((p) => p.id === projectId)
-      ?.sessions.find((s) => s.id === sessionId)?.agentId ?? null;
+    activeProject?.sessions.find((s) => s.id === sessionId)?.agentId ?? null;
 
   // Agent list for the selector dropdown
   const { harnesses, refresh: refreshHarnesses } = useInstalledHarnesses();
@@ -542,6 +548,27 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isThinking, scrollToBottom]);
+
+  // ── Sync session status to the shared store ──────────────────────
+  // Running while thinking; when thinking finishes on a non-active
+  // session mark it unseen so the sidebar shows a badge, otherwise idle.
+  // Only transition to "unseen" when coming from "running" so that
+  // inactive sessions aren't spuriously marked on first mount.
+  const prevThinkingRef = useRef(false);
+  useEffect(() => {
+    if (isThinking) {
+      setStatus(sessionId, "running");
+    } else if (prevThinkingRef.current) {
+      // Transitioning from running → only mark unseen if not active
+      setStatus(sessionId, isSessionActive ? "idle" : "unseen");
+    }
+    prevThinkingRef.current = isThinking;
+  }, [isThinking, isSessionActive, sessionId, setStatus]);
+
+  // Mark the session as seen whenever it becomes the active session
+  useEffect(() => {
+    if (isSessionActive) markSeen(sessionId);
+  }, [isSessionActive, markSeen, sessionId]);
 
   // ── Permission response handler ──────────────────────────────────
   const handlePermissionRespond = useCallback(

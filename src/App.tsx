@@ -4,6 +4,7 @@ import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
 import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
 import { MessageStoreProvider } from "@/stores/message-store";
+import { SessionStatusStoreProvider } from "@/stores/session-status-store";
 
 function AppLayout() {
   const { openProjects, activeProjectId } = useProjectStore();
@@ -66,7 +67,9 @@ function App() {
   return (
     <ProjectStoreProvider>
       <MessageStoreProvider>
-        <AppLayout />
+        <SessionStatusStoreProvider>
+          <AppLayout />
+        </SessionStatusStoreProvider>
       </MessageStoreProvider>
     </ProjectStoreProvider>
   );
