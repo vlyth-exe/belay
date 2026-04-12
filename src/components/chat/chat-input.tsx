@@ -21,6 +21,10 @@ interface ChatInputProps {
   modes?: AcpSessionMode[];
   /** Called when a mode is selected via @ mention autocomplete. */
   onModeSelect?: (modeId: string) => void;
+  /** When set, the input will be populated with this text (for editing a previous message). */
+  editText?: string;
+  /** Called after editText has been consumed into the input field. */
+  onEditTextConsumed?: () => void;
 }
 
 const MAX_HEIGHT = 200;
@@ -71,14 +75,30 @@ export function ChatInput({
   slashCommands = [],
   modes = [],
   onModeSelect,
+  editText,
+  onEditTextConsumed,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [cursorPosition, setCursorPosition] = useState<number | null>(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [prevItemCount, setPrevItemCount] = useState(0);
+  const [prevEditText, setPrevEditText] = useState<string | undefined>(
+    undefined,
+  );
+  const [focusEditVersion, setFocusEditVersion] = useState(0);
+  const prevFocusVersionRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Adjust state when editText prop changes (React-recommended pattern:
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  if (editText !== undefined && editText !== "" && editText !== prevEditText) {
+    setPrevEditText(editText);
+    setValue(editText);
+    setFocusEditVersion((v) => v + 1);
+    onEditTextConsumed?.();
+  }
 
   // ── Derive autocomplete state from input + cursor ───────────────
   const menuState: MenuState = useMemo(() => {
@@ -136,13 +156,19 @@ export function ChatInput({
     selected?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex, menuState.type]);
 
-  // Keep textarea height in sync with content
+  // Keep textarea height in sync with content and focus after editText change
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
-  }, [value]);
+    // Focus if this was triggered by an editText change
+    if (focusEditVersion !== prevFocusVersionRef.current) {
+      prevFocusVersionRef.current = focusEditVersion;
+      el.focus();
+      el.selectionStart = el.selectionEnd = el.value.length;
+    }
+  }, [value, focusEditVersion]);
 
   // ── Select a slash command ──────────────────────────────────────
   const selectCommand = useCallback((cmd: AcpAvailableCommand) => {

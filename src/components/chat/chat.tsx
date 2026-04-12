@@ -149,6 +149,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   const { messages, setMessages, saveMessages } = useSessionMessages(sessionId);
 
   const [isThinking, setIsThinking] = useState(false);
+  const [editText, setEditText] = useState<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Agent selection ───────────────────────────────────────────────
@@ -773,6 +774,27 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     saveMessages();
   }, [acpSessionId, agentId, cancelPrompt, setMessages, saveMessages]);
 
+  // ── Edit / resend a previous user message ────────────────────────
+  const clearEditText = useCallback(() => setEditText(undefined), []);
+
+  const handleEditMessage = useCallback(
+    (messageId: string) => {
+      const msgIndex = messages.findIndex((m) => m.id === messageId);
+      if (msgIndex < 0) return;
+
+      const message = messages[msgIndex];
+      const textBlock = message.blocks.find((b) => b.type === "text");
+      const content = textBlock?.type === "text" ? textBlock.content : "";
+
+      // Truncate messages to before this one (removes the message and all after it)
+      setMessages(messages.slice(0, msgIndex));
+      setEditText(content);
+      // Persist the truncated history
+      saveMessages();
+    },
+    [messages, setMessages, saveMessages],
+  );
+
   // ── Agent selector UI ────────────────────────────────────────────
   const selectedHarness = harnesses.find((h) => h.agentId === agentId);
 
@@ -940,6 +962,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
               slashCommands={slashCommands}
               modes={availableModes}
               onModeSelect={handleModeSelect}
+              editText={editText}
+              onEditTextConsumed={clearEditText}
             />
           </div>
         </div>
@@ -963,7 +987,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         <div className="mx-auto max-w-4xl px-4 py-6">
           <div className="space-y-4">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble
+                key={message.id}
+                message={message}
+                onEdit={message.role === "user" ? handleEditMessage : undefined}
+              />
             ))}
 
             {/* Typing indicator (only when not streaming via ACP) */}
@@ -1007,6 +1035,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
             slashCommands={slashCommands}
             modes={availableModes}
             onModeSelect={handleModeSelect}
+            editText={editText}
+            onEditTextConsumed={clearEditText}
           />
         </div>
       </div>

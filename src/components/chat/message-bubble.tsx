@@ -1,3 +1,5 @@
+import { useState, useCallback } from "react";
+import { Pencil, Copy, Check } from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCallDisplay } from "./tool-call-display";
 import { renderMarkdown } from "./markdown";
@@ -37,18 +39,89 @@ function BlockRenderer({
 
 interface MessageBubbleProps {
   message: Message;
+  /** Called when the user clicks "edit" on a user message. */
+  onEdit?: (messageId: string) => void;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onEdit }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const [isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // ── User messages: terminal-style input ──────────────────────────
+  // ── Copy message text to clipboard ────────────────────────────────
+  const handleCopy = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const textBlock = message.blocks.find((b) => b.type === "text");
+      const content = textBlock?.type === "text" ? textBlock.content : "";
+      if (!content) return;
+      try {
+        await navigator.clipboard.writeText(content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch {
+        // Fallback — ignore
+      }
+    },
+    [message.blocks],
+  );
+
+  // ── Edit handler ──────────────────────────────────────────────────
+  const handleEdit = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onEdit?.(message.id);
+    },
+    [message.id, onEdit],
+  );
+
+  // ── User messages: terminal-style input with hover actions ──────
   if (isUser) {
     const textBlock = message.blocks.find((b) => b.type === "text");
     const content = textBlock?.type === "text" ? textBlock.content : "";
+    const showActions = isHovered && !message.isStreaming;
 
     return (
-      <div className="flex justify-end">
+      <div
+        className="group/msg flex items-end justify-end gap-1.5"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* ── Action buttons (left of bubble) ──────────────────────── */}
+        <div
+          className={[
+            "flex shrink-0 items-center gap-0.5 pb-1 transition-opacity duration-150",
+            showActions ? "opacity-100" : "pointer-events-none opacity-0",
+          ].join(" ")}
+        >
+          {/* Copy */}
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Copy message"
+          >
+            {copied ? (
+              <Check className="size-3.5" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
+          </button>
+
+          {/* Edit / Resend */}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Edit and resend"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* ── Bubble ───────────────────────────────────────────────── */}
         <div className="max-w-[85%] rounded-lg rounded-br-sm bg-primary px-3.5 py-2 text-[14px] leading-relaxed text-primary-foreground">
           <p className="whitespace-pre-wrap wrap-break-word">{content}</p>
         </div>
