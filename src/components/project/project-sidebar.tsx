@@ -623,7 +623,7 @@ export function ProjectSidebar() {
           }
           style={isSessionDragging ? { opacity: 0.4 } : undefined}
           className={[
-            "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-grab active:cursor-grabbing",
+            "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-pointer",
             isSessionActive
               ? "bg-muted/70 text-foreground"
               : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
@@ -906,7 +906,7 @@ export function ProjectSidebar() {
                     }
                     style={isDragging ? { opacity: 0.4 } : undefined}
                     className={[
-                      "group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors cursor-grab active:cursor-grabbing",
+                      "group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors cursor-pointer",
                       isActive
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -1048,7 +1048,7 @@ export function ProjectSidebar() {
                                   })
                                 }
                                 className={[
-                                  "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors cursor-grab active:cursor-grabbing",
+                                  "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors cursor-pointer",
                                   isGroupDropTarget
                                     ? "ring-2 ring-primary/60 bg-primary/10"
                                     : isLayoutDropBefore
@@ -1141,7 +1141,7 @@ export function ProjectSidebar() {
                                   })
                                 }
                                 className={[
-                                  "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-grab active:cursor-grabbing",
+                                  "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-pointer",
                                   isSessionActive
                                     ? "bg-muted/70 text-foreground"
                                     : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
