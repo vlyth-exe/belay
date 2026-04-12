@@ -20,7 +20,7 @@ type ErrorCallback = (error: { message: string; stderr: string }) => void;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-const isWindows = process.platform === "win32";
+export const isWindows = process.platform === "win32";
 
 /**
  * Quote an argument for inclusion in a shell command string.
@@ -70,7 +70,7 @@ function extractLastError(stderr: string): string | undefined {
  * Convert a Windows path to a WSL-compatible path.
  * e.g. "D:\\Dev\\belay" → "/mnt/d/Dev/belay"
  */
-function windowsToWslPath(winPath: string): string {
+export function windowsToWslPath(winPath: string): string {
   let path = winPath.replace(/\\/g, "/");
   path = path.replace(
     /^([A-Za-z]):/,

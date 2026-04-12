@@ -291,7 +291,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       // once we do, filter normally.
       const isEarlyUpdate =
         sessionUpdate === "current_mode_update" ||
-        sessionUpdate === "available_commands_update";
+        sessionUpdate === "available_commands_update" ||
+        sessionUpdate === "session_info_update";
 
       if (isEarlyUpdate) {
         // If we already have a session, only accept matching notifications
@@ -316,6 +317,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           | AcpAvailableCommand[]
           | undefined;
         if (cmds) setSlashCommands(cmds);
+        return;
+      }
+
+      // ── Session info update (title from agent) ──────────────────
+      if (sessionUpdate === "session_info_update") {
+        const title = inner.title as string | undefined;
+        if (title) renameSession(projectId, sessionId, title);
         return;
       }
 

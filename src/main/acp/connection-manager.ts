@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron";
-import { AcpClient } from "./acp-client.js";
+import { AcpClient, isWindows, windowsToWslPath } from "./acp-client.js";
 import { getHarness } from "./harness-store.js";
 import type { HarnessConfig } from "./harness-store.js";
 import type {
@@ -179,7 +179,14 @@ class ConnectionManager {
     const managed = this.clients.get(agentId);
     if (!managed) throw new Error(`Not connected to agent: ${agentId}`);
     managed.lastActivity = new Date();
-    return managed.client.createSession(cwd);
+
+    // Convert cwd to a WSL-compatible path when the agent is running
+    // inside Windows Subsystem for Linux so the agent receives a path
+    // it can actually resolve (e.g. /mnt/d/Dev/belay).
+    const effectiveCwd =
+      cwd && isWindows && managed.harness.useWsl ? windowsToWslPath(cwd) : cwd;
+
+    return managed.client.createSession(effectiveCwd);
   }
 
   async sendPrompt(
