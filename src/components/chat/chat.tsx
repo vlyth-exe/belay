@@ -1134,7 +1134,7 @@ export function Chat({
   // ── Empty state ──────────────────────────────────────────────────
   if (messages.length === 0 && !isThinking) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1" />
 
         {/* Agent selector + input pinned to bottom */}
@@ -1187,7 +1187,7 @@ export function Chat({
   const isStreaming = messages.some((m) => m.isStreaming);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Message list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 py-6">
