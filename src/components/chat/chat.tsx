@@ -11,7 +11,7 @@ import {
   useAcpActions,
   useInstalledHarnesses,
 } from "@/hooks/use-acp";
-import { useSessionMessages } from "@/stores/message-store";
+import { useSessionMessages, useMessageStore } from "@/stores/message-store";
 import { useProjectStore } from "@/stores/project-store";
 
 // ── Block helpers ────────────────────────────────────────────────────
@@ -147,6 +147,7 @@ interface ChatProps {
 export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
   const { messages, setMessages, saveMessages } = useSessionMessages(sessionId);
+  const messageStore = useMessageStore();
 
   const [isThinking, setIsThinking] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | undefined>(
@@ -159,7 +160,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   const agentSelectorRef = useRef<HTMLDivElement>(null);
 
   // Look up the agentId for this session from the project store
-  const { renameSession, setSessionAgent, openProjects } = useProjectStore();
+  const {
+    renameSession,
+    setSessionAgent,
+    openProjects,
+    addSession,
+    setActiveSession,
+  } = useProjectStore();
   const agentId =
     openProjects
       .find((p) => p.id === projectId)
@@ -802,6 +809,54 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     setEditingMessageId(undefined);
   }, []);
 
+  // ── Branch: create a new session from a specific message ────────
+  const handleBranch = useCallback(
+    (messageId: string) => {
+      const msgIndex = messages.findIndex((m) => m.id === messageId);
+      if (msgIndex < 0) return;
+
+      // Copy messages up to and including the branched message
+      const branchedMessages = messages.slice(0, msgIndex + 1);
+
+      // Create a new session
+      const newSessionId = addSession(projectId);
+
+      // Carry the current agent over to the new session
+      if (agentId) {
+        setSessionAgent(projectId, newSessionId, agentId);
+      }
+
+      // Pre-populate the message store cache for the new session and persist
+      messageStore.setMessages(newSessionId, branchedMessages);
+      messageStore.saveSession(newSessionId);
+
+      // Derive a title from the first user message
+      const firstUserMsg = branchedMessages.find((m) => m.role === "user");
+      if (firstUserMsg) {
+        const textBlock = firstUserMsg.blocks.find((b) => b.type === "text");
+        const content = textBlock?.type === "text" ? textBlock.content : "";
+        if (content) {
+          const title =
+            content.length > 80 ? content.slice(0, 77) + "..." : content;
+          renameSession(projectId, newSessionId, title);
+        }
+      }
+
+      // Navigate to the new session
+      setActiveSession(projectId, newSessionId);
+    },
+    [
+      messages,
+      projectId,
+      agentId,
+      addSession,
+      setSessionAgent,
+      messageStore,
+      renameSession,
+      setActiveSession,
+    ],
+  );
+
   // ── Agent selector UI ────────────────────────────────────────────
   const selectedHarness = harnesses.find((h) => h.agentId === agentId);
 
@@ -997,6 +1052,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
                 message={message}
                 isEditing={editingMessageId === message.id}
                 onEdit={message.role === "user" ? handleStartEdit : undefined}
+                onBranch={message.role === "user" ? handleBranch : undefined}
                 onEditSubmit={
                   message.role === "user" ? handleEditSubmit : undefined
                 }

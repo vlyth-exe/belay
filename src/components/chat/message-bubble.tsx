@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Pencil, Copy, Check, X, ArrowUp } from "lucide-react";
+import { Pencil, Copy, Check, X, ArrowUp, GitBranch } from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCallDisplay } from "./tool-call-display";
 import { renderMarkdown } from "./markdown";
@@ -41,6 +41,8 @@ interface MessageBubbleProps {
   message: Message;
   /** Called when the user clicks "edit" on a user message. */
   onEdit?: (messageId: string) => void;
+  /** Called when the user clicks "branch" to create a new session from this message. */
+  onBranch?: (messageId: string) => void;
   /** Whether this message is currently being edited inline. */
   isEditing?: boolean;
   /** Called when the user submits an inline edit (Enter or Send button). */
@@ -52,6 +54,7 @@ interface MessageBubbleProps {
 export function MessageBubble({
   message,
   onEdit,
+  onBranch,
   isEditing = false,
   onEditSubmit,
   onEditCancel,
@@ -111,6 +114,15 @@ export function MessageBubble({
       onEdit?.(message.id);
     },
     [message.id, onEdit],
+  );
+
+  // ── Branch handler ────────────────────────────────────────────────
+  const handleBranch = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onBranch?.(message.id);
+    },
+    [message.id, onBranch],
   );
 
   const handleEditKeyDown = useCallback(
@@ -230,6 +242,18 @@ export function MessageBubble({
               <Copy className="size-3.5" />
             )}
           </button>
+
+          {/* Branch from here */}
+          {onBranch && (
+            <button
+              type="button"
+              onClick={handleBranch}
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Branch from here"
+            >
+              <GitBranch className="size-3.5" />
+            </button>
+          )}
 
           {/* Edit / Resend */}
           {onEdit && (
