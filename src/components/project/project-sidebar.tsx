@@ -105,6 +105,11 @@ export function ProjectSidebar() {
   );
   const [groupDialogKey, setGroupDialogKey] = useState(0);
 
+  // Inline rename state for sessions
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null,
+  );
+
   function setDrop(indicator: DropIndicator | null) {
     dropIndicatorRef.current = indicator;
     setDropIndicator(indicator);
@@ -121,6 +126,7 @@ export function ProjectSidebar() {
     addSession,
     removeSession,
     setActiveSession,
+    renameSession,
     pathToId,
     reorderProjects,
     createGroup,
@@ -636,9 +642,37 @@ export function ProjectSidebar() {
             ].join(" ")}
           />
 
-          <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
-            {session.title}
-          </span>
+          {renamingSessionId === session.id ? (
+            <input
+              type="text"
+              autoFocus
+              defaultValue={session.title}
+              className="min-w-0 flex-1 bg-transparent text-[12px] leading-tight text-foreground outline-none ring-1 ring-primary rounded px-1 -mx-1"
+              onClick={(e) => e.stopPropagation()}
+              onBlur={(e) => {
+                const value = e.target.value.trim();
+                if (value && value !== session.title) {
+                  renameSession(project.id, session.id, value);
+                }
+                setRenamingSessionId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const value = (e.target as HTMLInputElement).value.trim();
+                  if (value && value !== session.title) {
+                    renameSession(project.id, session.id, value);
+                  }
+                  setRenamingSessionId(null);
+                } else if (e.key === "Escape") {
+                  setRenamingSessionId(null);
+                }
+              }}
+            />
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
+              {session.title}
+            </span>
+          )}
 
           <button
             type="button"
@@ -714,6 +748,18 @@ export function ProjectSidebar() {
           {/* ── Session context menu ── */}
           {target.kind === "session" && project && (
             <>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
+                onClick={() => {
+                  setRenamingSessionId(target.sessionId);
+                  closeContextMenu();
+                }}
+              >
+                <Pencil className="size-3.5 shrink-0" />
+                Rename
+              </button>
+
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted"
