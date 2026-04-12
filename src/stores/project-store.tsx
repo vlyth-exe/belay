@@ -381,8 +381,13 @@ function projectReducer(
     }
 
     case "SET_ACTIVE_SESSION": {
+      const activeProjectId =
+        state.activeProjectId === action.projectId
+          ? state.activeProjectId
+          : action.projectId;
       return {
         ...state,
+        activeProjectId,
         openProjects: updateProject(
           state.openProjects,
           action.projectId,
