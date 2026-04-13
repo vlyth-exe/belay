@@ -200,12 +200,24 @@ export function TerminalPanel({
           data-tab-bar-scroll
           className="flex items-center gap-1 overflow-x-auto"
           style={{
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsl(var(--border)) transparent",
           }}
         >
           <style>{`
-            [data-tab-bar-scroll]::-webkit-scrollbar { display: none; }
+            [data-tab-bar-scroll]::-webkit-scrollbar {
+              height: 4px;
+            }
+            [data-tab-bar-scroll]::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            [data-tab-bar-scroll]::-webkit-scrollbar-thumb {
+              background: hsl(var(--border));
+              border-radius: 9999px;
+            }
+            [data-tab-bar-scroll]::-webkit-scrollbar-thumb:hover {
+              background: hsl(var(--muted-foreground) / 0.5);
+            }
           `}</style>
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
