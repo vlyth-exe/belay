@@ -47,6 +47,7 @@ export function TerminalPanel({
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
 
   // ── Drag-to-resize ─────────────────────────────────────────────────
 
@@ -75,6 +76,36 @@ export function TerminalPanel({
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDragging]);
+
+  // ── Horizontal scroll with mouse wheel on tab bar ──────────────────
+
+  useEffect(() => {
+    const el = tabBarRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
+
+  // ── Auto-scroll active tab into view ───────────────────────────────
+
+  useEffect(() => {
+    if (!activeTabId || !tabBarRef.current) return;
+    const activeTab = tabBarRef.current.querySelector(
+      `[data-tab-id="${activeTabId}"]`,
+    ) as HTMLElement | null;
+    activeTab?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior: "smooth",
+    });
+  }, [activeTabId]);
 
   // ── Context menu ───────────────────────────────────────────────────
 
@@ -163,72 +194,86 @@ export function TerminalPanel({
       </div>
 
       {/* Tab bar */}
-      <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-1">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeTabId;
-          const isRenaming = renamingTabId === tab.id;
+      <div className="flex shrink-0 items-center px-2 pb-1.5 pt-1">
+        <div
+          ref={tabBarRef}
+          data-tab-bar-scroll
+          className="flex items-center gap-1 overflow-x-auto"
+          style={{
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
+          <style>{`
+            [data-tab-bar-scroll]::-webkit-scrollbar { display: none; }
+          `}</style>
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            const isRenaming = renamingTabId === tab.id;
 
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => {
-                if (!isRenaming) onSelectTab(tab.id);
-              }}
-              onContextMenu={(e) => handleContextMenu(e, tab)}
-              className={cn(
-                "group/tab relative inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
-                isActive
-                  ? "bg-muted text-foreground shadow-sm"
-                  : "text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground",
-              )}
-            >
-              {isRenaming ? (
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      confirmRename();
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      cancelRename();
-                    }
-                  }}
-                  onBlur={confirmRename}
-                  onClick={(e) => e.stopPropagation()}
-                  onContextMenu={(e) => e.preventDefault()}
-                  className="w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium text-foreground outline-none ring-1 ring-ring"
-                />
-              ) : (
-                <span>{tab.label}</span>
-              )}
-              {!isRenaming && (
-                <span
-                  role="presentation"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCloseTab(tab.id);
-                  }}
-                  className={cn(
-                    "inline-flex size-4 items-center justify-center rounded-sm transition-all",
-                    "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
-                  )}
-                  aria-label={`Close ${tab.label}`}
-                >
-                  <X className="size-2.5" />
-                </span>
-              )}
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={tab.id}
+                data-tab-id={tab.id}
+                type="button"
+                onClick={() => {
+                  if (!isRenaming) onSelectTab(tab.id);
+                }}
+                onContextMenu={(e) => handleContextMenu(e, tab)}
+                className={cn(
+                  "group/tab relative inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
+                  isActive
+                    ? "bg-muted text-foreground shadow-sm"
+                    : "text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground",
+                )}
+              >
+                {isRenaming ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        confirmRename();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelRename();
+                      }
+                    }}
+                    onBlur={confirmRename}
+                    onClick={(e) => e.stopPropagation()}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className="w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium text-foreground outline-none ring-1 ring-ring"
+                  />
+                ) : (
+                  <span>{tab.label}</span>
+                )}
+                {!isRenaming && (
+                  <span
+                    role="presentation"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseTab(tab.id);
+                    }}
+                    className={cn(
+                      "inline-flex size-4 items-center justify-center rounded-sm transition-all",
+                      "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
+                    )}
+                    aria-label={`Close ${tab.label}`}
+                  >
+                    <X className="size-2.5" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <button
           type="button"
           onClick={onAddTab}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-muted/40 hover:text-foreground"
+          className="ml-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-muted/40 hover:text-foreground"
           aria-label="Open new terminal"
           title="Open new terminal"
         >
