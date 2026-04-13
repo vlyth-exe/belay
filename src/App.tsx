@@ -48,9 +48,8 @@ function AppLayout() {
     return next;
   };
 
-  /** Toggle terminal panel for a session. If panel is closed, open with
-   *  one tab. If panel is already open, add a new tab.  Spawn options
-   *  are captured at creation time from the session's active agent. */
+  /** Toggle terminal panel for a session. Opens the panel with one tab
+   *  if closed; closes the entire panel (kills all tabs) if open. */
   const toggleTerminal = useCallback(
     (sessionId: string, spawnOptions?: SpawnOptions) => {
       setSessionTerminals((prev) => {
@@ -58,6 +57,7 @@ function AppLayout() {
         const existing = next.get(sessionId);
 
         if (!existing || existing.tabs.length === 0) {
+          // Open panel with first tab
           const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
           next.set(sessionId, {
             tabs: [{ id: tabId, label: "Terminal 1", spawnOptions }],
@@ -65,21 +65,39 @@ function AppLayout() {
             nextLabel: 2,
           });
         } else {
-          const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-          next.set(sessionId, {
-            ...existing,
-            tabs: [
-              ...existing.tabs,
-              {
-                id: tabId,
-                label: `Terminal ${existing.nextLabel}`,
-                spawnOptions,
-              },
-            ],
-            activeTabId: tabId,
-            nextLabel: existing.nextLabel + 1,
-          });
+          // Close panel — kill all running PTY processes
+          existing.tabs.forEach((t) => window.electronAPI?.terminalKill(t.id));
+          next.delete(sessionId);
         }
+
+        return syncRef(next);
+      });
+    },
+    [],
+  );
+
+  /** Add a new terminal tab to an already-open panel. */
+  const addTab = useCallback(
+    (sessionId: string, spawnOptions?: SpawnOptions) => {
+      setSessionTerminals((prev) => {
+        const existing = prev.get(sessionId);
+        if (!existing) return prev;
+
+        const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const next = new Map(prev);
+        next.set(sessionId, {
+          ...existing,
+          tabs: [
+            ...existing.tabs,
+            {
+              id: tabId,
+              label: `Terminal ${existing.nextLabel}`,
+              spawnOptions,
+            },
+          ],
+          activeTabId: tabId,
+          nextLabel: existing.nextLabel + 1,
+        });
 
         return syncRef(next);
       });
@@ -231,7 +249,7 @@ function AppLayout() {
                       tabs={terminalData!.tabs}
                       activeTabId={terminalData!.activeTabId}
                       onSelectTab={(tabId) => selectTab(session.id, tabId)}
-                      onAddTab={() => toggleTerminal(session.id, spawnOptions)}
+                      onAddTab={() => addTab(session.id, spawnOptions)}
                       onCloseTab={(tabId) => closeTab(session.id, tabId)}
                     />
                   )}
