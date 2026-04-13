@@ -1,8 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Plus, X, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TerminalView } from "./terminal";
 import type { TerminalTab } from "@/App";
+
+// ── Context menu types ──────────────────────────────────────────────
+
+interface ContextMenuState {
+  tabId: string;
+  tabLabel: string;
+  x: number;
+  y: number;
+}
+
+// ── Props ───────────────────────────────────────────────────────────
 
 interface TerminalPanelProps {
   projectPath?: string;
@@ -13,6 +25,8 @@ interface TerminalPanelProps {
   onCloseTab: (tabId: string) => void;
   onRenameTab: (tabId: string, label: string) => void;
 }
+
+// ── Component ───────────────────────────────────────────────────────
 
 export function TerminalPanel({
   projectPath,
@@ -25,9 +39,16 @@ export function TerminalPanel({
 }: TerminalPanelProps) {
   const [height, setHeight] = useState(250);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // Rename state
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Drag-to-resize ─────────────────────────────────────────────────
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -55,6 +76,52 @@ export function TerminalPanel({
     };
   }, [isDragging]);
 
+  // ── Context menu ───────────────────────────────────────────────────
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, tab: TerminalTab) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+        tabId: tab.id,
+        tabLabel: tab.label,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    },
+    [],
+  );
+
+  // Dismiss context menu on any outside click or scroll
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const dismiss = () => setContextMenu(null);
+
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("scroll", dismiss, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("scroll", dismiss, true);
+    };
+  }, [contextMenu]);
+
+  const handleContextRename = useCallback(() => {
+    if (!contextMenu) return;
+    setRenamingTabId(contextMenu.tabId);
+    setRenameValue(contextMenu.tabLabel);
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleContextClose = useCallback(() => {
+    if (!contextMenu) return;
+    onCloseTab(contextMenu.tabId);
+    setContextMenu(null);
+  }, [contextMenu, onCloseTab]);
+
+  // ── Rename ─────────────────────────────────────────────────────────
+
   // Auto-focus and select the rename input when it appears
   useEffect(() => {
     if (renamingTabId && renameInputRef.current) {
@@ -62,13 +129,6 @@ export function TerminalPanel({
       renameInputRef.current.select();
     }
   }, [renamingTabId]);
-
-  const startRename = useCallback((e: React.MouseEvent, tab: TerminalTab) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setRenamingTabId(tab.id);
-    setRenameValue(tab.label);
-  }, []);
 
   const confirmRename = useCallback(() => {
     if (renamingTabId) {
@@ -83,6 +143,8 @@ export function TerminalPanel({
   const cancelRename = useCallback(() => {
     setRenamingTabId(null);
   }, []);
+
+  // ── Render ─────────────────────────────────────────────────────────
 
   return (
     <div
@@ -113,7 +175,7 @@ export function TerminalPanel({
               onClick={() => {
                 if (!isRenaming) onSelectTab(tab.id);
               }}
-              onContextMenu={(e) => startRename(e, tab)}
+              onContextMenu={(e) => handleContextMenu(e, tab)}
               className={cn(
                 "group/tab relative inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
                 isActive
@@ -138,10 +200,8 @@ export function TerminalPanel({
                   }}
                   onBlur={confirmRename}
                   onClick={(e) => e.stopPropagation()}
-                  className={cn(
-                    "w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium outline-none ring-1 ring-ring",
-                    isActive ? "text-foreground" : "text-foreground",
-                  )}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium text-foreground outline-none ring-1 ring-ring"
                 />
               ) : (
                 <span>{tab.label}</span>
@@ -155,9 +215,7 @@ export function TerminalPanel({
                   }}
                   className={cn(
                     "inline-flex size-4 items-center justify-center rounded-sm transition-all",
-                    isActive
-                      ? "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10"
-                      : "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
+                    "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
                   )}
                   aria-label={`Close ${tab.label}`}
                 >
@@ -196,6 +254,36 @@ export function TerminalPanel({
           </div>
         ))}
       </div>
+
+      {/* Context menu — rendered via portal so it floats above everything */}
+      {contextMenu &&
+        createPortal(
+          <div
+            // Capture the pointer-down before the document listener so the
+            // menu item fires instead of the dismiss handler.
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed z-[9999] min-w-[140px] overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-lg"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              type="button"
+              onClick={handleContextRename}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+            >
+              <Pencil className="size-3 text-muted-foreground" />
+              Rename
+            </button>
+            <button
+              type="button"
+              onClick={handleContextClose}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3" />
+              Close
+            </button>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
