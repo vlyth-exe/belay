@@ -24,6 +24,7 @@ interface TerminalPanelProps {
   onAddTab: () => void;
   onCloseTab: (tabId: string) => void;
   onRenameTab: (tabId: string, label: string) => void;
+  onReorderTabs: (fromIndex: number, toIndex: number) => void;
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ export function TerminalPanel({
   onAddTab,
   onCloseTab,
   onRenameTab,
+  onReorderTabs,
 }: TerminalPanelProps) {
   const [height, setHeight] = useState(250);
   const [isDragging, setIsDragging] = useState(false);
@@ -48,6 +50,10 @@ export function TerminalPanel({
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
   const tabBarRef = useRef<HTMLDivElement>(null);
+
+  // Drag-and-drop reorder state
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   // ── Drag-to-resize ─────────────────────────────────────────────────
 
@@ -175,6 +181,66 @@ export function TerminalPanel({
     setRenamingTabId(null);
   }, []);
 
+  // ── Drag-and-drop tab reorder ──────────────────────────────────────
+
+  const handleTabDragStart = useCallback(
+    (e: React.DragEvent, tabId: string) => {
+      setDraggedTabId(tabId);
+      // Use a transparent drag image so we can rely on our own visual state
+      const ghost = document.createElement("div");
+      ghost.style.opacity = "0";
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 0, 0);
+      e.dataTransfer.effectAllowed = "move";
+      // Clean up ghost element next tick
+      requestAnimationFrame(() => document.body.removeChild(ghost));
+    },
+    [],
+  );
+
+  const handleTabDragOver = useCallback(
+    (e: React.DragEvent, tabIndex: number) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (draggedTabId === null) return;
+
+      const draggedIndex = tabs.findIndex((t) => t.id === draggedTabId);
+      if (draggedIndex === -1) return;
+
+      // Compute the insertion index: if dragging rightward past the original
+      // position, the visual drop index is one less because removing the
+      // dragged tab shifts everything left.
+      const adjustedIndex = tabIndex > draggedIndex ? tabIndex + 1 : tabIndex;
+
+      setDropIndex(adjustedIndex);
+    },
+    [draggedTabId, tabs],
+  );
+
+  const handleTabDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      if (draggedTabId === null || dropIndex === null) return;
+
+      const fromIndex = tabs.findIndex((t) => t.id === draggedTabId);
+      if (fromIndex === -1) return;
+
+      // Only reorder if the position actually changed
+      if (fromIndex !== dropIndex && fromIndex !== dropIndex - 1) {
+        onReorderTabs(fromIndex, dropIndex);
+      }
+
+      setDraggedTabId(null);
+      setDropIndex(null);
+    },
+    [draggedTabId, dropIndex, tabs, onReorderTabs],
+  );
+
+  const handleTabDragEnd = useCallback(() => {
+    setDraggedTabId(null);
+    setDropIndex(null);
+  }, []);
+
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
@@ -194,11 +260,31 @@ export function TerminalPanel({
       </div>
 
       {/* Tab bar */}
-      <div className="flex shrink-0 items-center px-2 pb-1.5 pt-1">
+      <div
+        className="flex shrink-0 items-center px-2 pb-1.5 pt-1"
+        onDragOver={(e) => {
+          // Allow drop on the tab bar container so dragEnd fires reliably
+          e.preventDefault();
+        }}
+        onDragLeave={(e) => {
+          // Only clear if leaving the tab bar entirely (not entering a child)
+          const rect = e.currentTarget.getBoundingClientRect();
+          const { clientX, clientY } = e;
+          if (
+            clientX < rect.left ||
+            clientX > rect.right ||
+            clientY < rect.top ||
+            clientY > rect.bottom
+          ) {
+            setDropIndex(null);
+          }
+        }}
+        onDrop={handleTabDrop}
+      >
         <div
           ref={tabBarRef}
           data-tab-bar-scroll
-          className="flex items-center gap-1 overflow-x-auto"
+          className="flex items-center overflow-x-auto"
           style={{
             scrollbarWidth: "thin",
             scrollbarColor: "hsl(var(--border)) transparent",
@@ -219,68 +305,101 @@ export function TerminalPanel({
               background: hsl(var(--muted-foreground) / 0.5);
             }
           `}</style>
-          {tabs.map((tab) => {
+          {tabs.map((tab, index) => {
             const isActive = tab.id === activeTabId;
             const isRenaming = renamingTabId === tab.id;
+            const isDragged = draggedTabId === tab.id;
+            const showDropBefore =
+              dropIndex === index && draggedTabId !== tab.id;
 
             return (
-              <button
+              <div
                 key={tab.id}
-                data-tab-id={tab.id}
-                type="button"
-                onClick={() => {
-                  if (!isRenaming) onSelectTab(tab.id);
-                }}
-                onContextMenu={(e) => handleContextMenu(e, tab)}
-                className={cn(
-                  "group/tab relative inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
-                  isActive
-                    ? "bg-muted text-foreground shadow-sm"
-                    : "text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground",
-                )}
+                className="flex shrink-0 items-center"
+                onDragOver={(e) => handleTabDragOver(e, index)}
+                onDrop={handleTabDrop}
               >
-                {isRenaming ? (
-                  <input
-                    ref={renameInputRef}
-                    type="text"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        confirmRename();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelRename();
-                      }
-                    }}
-                    onBlur={confirmRename}
-                    onClick={(e) => e.stopPropagation()}
-                    onContextMenu={(e) => e.preventDefault()}
-                    className="w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium text-foreground outline-none ring-1 ring-ring"
-                  />
-                ) : (
-                  <span>{tab.label}</span>
+                {/* Drop indicator line before this tab */}
+                {showDropBefore && (
+                  <div className="mr-0.5 h-4 w-0.5 shrink-0 rounded-full bg-primary" />
                 )}
-                {!isRenaming && (
-                  <span
-                    role="presentation"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCloseTab(tab.id);
-                    }}
-                    className={cn(
-                      "inline-flex size-4 items-center justify-center rounded-sm transition-all",
-                      "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
-                    )}
-                    aria-label={`Close ${tab.label}`}
-                  >
-                    <X className="size-2.5" />
-                  </span>
-                )}
-              </button>
+                <button
+                  data-tab-id={tab.id}
+                  type="button"
+                  draggable={!isRenaming}
+                  onDragStart={(e) => handleTabDragStart(e, tab.id)}
+                  onDragEnd={handleTabDragEnd}
+                  onClick={() => {
+                    if (!isRenaming) onSelectTab(tab.id);
+                  }}
+                  onContextMenu={(e) => handleContextMenu(e, tab)}
+                  className={cn(
+                    "group/tab relative inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
+                    isDragged && "opacity-40",
+                    isActive && !isDragged
+                      ? "bg-muted text-foreground shadow-sm"
+                      : "text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground",
+                  )}
+                >
+                  {isRenaming ? (
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          confirmRename();
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelRename();
+                        }
+                      }}
+                      onBlur={confirmRename}
+                      onClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.preventDefault()}
+                      className="w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium text-foreground outline-none ring-1 ring-ring"
+                    />
+                  ) : (
+                    <span>{tab.label}</span>
+                  )}
+                  {!isRenaming && (
+                    <span
+                      role="presentation"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCloseTab(tab.id);
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className={cn(
+                        "inline-flex size-4 items-center justify-center rounded-sm transition-all",
+                        "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
+                      )}
+                      aria-label={`Close ${tab.label}`}
+                    >
+                      <X className="size-2.5" />
+                    </span>
+                  )}
+                </button>
+              </div>
             );
           })}
+          {/* Drop indicator at the very end */}
+          {dropIndex === tabs.length && (
+            <div className="ml-0.5 h-4 w-0.5 shrink-0 rounded-full bg-primary" />
+          )}
+          {/* Trailing drop zone — allows dropping a tab at the very end */}
+          {draggedTabId !== null && (
+            <div
+              className="h-6 w-4 shrink-0"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDropIndex(tabs.length);
+              }}
+            />
+          )}
         </div>
         <button
           type="button"

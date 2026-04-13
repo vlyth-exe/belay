@@ -164,6 +164,25 @@ function AppLayout() {
     [],
   );
 
+  /** Reorder terminal tabs (e.g. via drag-and-drop). */
+  const reorderTabs = useCallback(
+    (sessionId: string, fromIndex: number, toIndex: number) => {
+      setSessionTerminals((prev) => {
+        const existing = prev.get(sessionId);
+        if (!existing) return prev;
+
+        const tabs = [...existing.tabs];
+        const [moved] = tabs.splice(fromIndex, 1);
+        tabs.splice(toIndex, 0, moved);
+
+        const next = new Map(prev);
+        next.set(sessionId, { ...existing, tabs });
+        return syncRef(next);
+      });
+    },
+    [],
+  );
+
   // Kill terminal processes for sessions that no longer exist
   useEffect(() => {
     const currentSessionIds = new Set(
@@ -272,6 +291,9 @@ function AppLayout() {
                       onCloseTab={(tabId) => closeTab(session.id, tabId)}
                       onRenameTab={(tabId, label) =>
                         renameTab(session.id, tabId, label)
+                      }
+                      onReorderTabs={(fromIndex, toIndex) =>
+                        reorderTabs(session.id, fromIndex, toIndex)
                       }
                     />
                   )}
