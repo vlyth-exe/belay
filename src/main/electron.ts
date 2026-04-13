@@ -179,51 +179,42 @@ ipcMain.handle("session:deleteMessages", async (_event, sessionId: string) => {
 
 // ── IPC handlers for directory explorer ──────────────────────────────
 
-export interface DirEntry {
-  name: string;
-  isDirectory: boolean;
-  isFile: boolean;
-  size: number;
-  modifiedAt: number | null;
-}
-
-ipcMain.handle(
-  "fs:readDir",
-  async (_event, dirPath: string): Promise<DirEntry[]> => {
-    try {
-      const entries = await fs.promises.readdir(dirPath, {
-        withFileTypes: true,
-      });
-      const results: DirEntry[] = [];
-      for (const entry of entries) {
-        // Skip hidden files/dirs (starting with a dot)
-        if (entry.name.startsWith(".")) continue;
+ipcMain.handle("fs:readDir", async (_event, dirPath: string) => {
+  try {
+    const entries = await fs.promises.readdir(dirPath, {
+      withFileTypes: true,
+    });
+    const statPromises = entries
+      .filter((entry) => !entry.name.startsWith("."))
+      .map(async (entry) => {
         try {
           const fullPath = path.join(dirPath, entry.name);
           const stat = await fs.promises.stat(fullPath);
-          results.push({
+          return {
             name: entry.name,
             isDirectory: stat.isDirectory(),
             isFile: stat.isFile(),
             size: stat.size,
             modifiedAt: stat.mtimeMs,
-          });
+          };
         } catch {
-          // Skip entries we can't stat (permission issues, broken symlinks, etc.)
+          return null;
         }
-      }
-      // Sort: directories first, then alphabetical
-      results.sort((a, b) => {
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.name.localeCompare(b.name);
       });
-      return results;
-    } catch {
-      return [];
-    }
-  },
-);
+    const results = (await Promise.all(statPromises)).filter(
+      (e): e is NonNullable<typeof e> => e !== null,
+    );
+    // Sort: directories first, then alphabetical
+    results.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    return results;
+  } catch {
+    return [];
+  }
+});
 
 // ── IPC handlers for ACP operations ──────────────────────────────────
 

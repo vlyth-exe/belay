@@ -289,29 +289,26 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
   }, [normalisedRoot]);
 
   /** Lazy-load children for a directory node. */
-  const loadChildren = useCallback(
-    async (node: TreeNode): Promise<void> => {
-      const entries = await window.electronAPI?.fsReadDir(node.path);
-      if (!entries) return;
+  const loadChildren = useCallback(async (node: TreeNode): Promise<void> => {
+    const entries = await window.electronAPI?.fsReadDir(node.path);
+    if (!entries) return;
 
-      const children = entriesToNodes(node.path, entries);
+    const children = entriesToNodes(node.path, entries);
 
-      setTree((prev) => {
-        const update = (nodes: TreeNode[]): TreeNode[] =>
-          nodes.map((n) => {
-            if (n.path === node.path) {
-              return { ...n, children, loaded: true };
-            }
-            if (n.children) {
-              return { ...n, children: update(n.children) };
-            }
-            return n;
-          });
-        return update(prev);
-      });
-    },
-    [],
-  );
+    setTree((prev) => {
+      const update = (nodes: TreeNode[]): TreeNode[] =>
+        nodes.map((n) => {
+          if (n.path === node.path) {
+            return { ...n, children, loaded: true };
+          }
+          if (n.children) {
+            return { ...n, children: update(n.children) };
+          }
+          return n;
+        });
+      return update(prev);
+    });
+  }, []);
 
   /** Toggle a directory's expanded state. */
   const togglePath = useCallback((path: string) => {
@@ -334,12 +331,14 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
     loadRoot();
   }, [loadRoot]);
 
-  // Auto-expand root on first load
+  // Reset and reload when root path changes
   useEffect(() => {
-    if (!rootLoadedRef.current) {
-      loadRoot();
-    }
-  }, [loadRoot]);
+    setTree([]);
+    setExpandedPaths(new Set());
+    setError(null);
+    rootLoadedRef.current = false;
+    loadRoot();
+  }, [normalisedRoot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-full flex-col">
