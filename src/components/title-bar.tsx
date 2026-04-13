@@ -173,6 +173,9 @@ export function TitleBar({ projectPath }: TitleBarProps) {
 function BranchDropdown({ projectPath }: { projectPath?: string }) {
   const { branch, isRepo, branches, worktrees, refresh } =
     useGitBranch(projectPath);
+  const [dropdownTab, setDropdownTab] = useState<"branches" | "worktrees">(
+    "branches",
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -180,7 +183,6 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
   if (!isRepo || !branch) return null;
 
   const localBranches = branches.filter((b) => !b.isRemote);
-  const hasMultipleWorktrees = worktrees.length > 1;
 
   const handleCheckout = async (name: string) => {
     await window.electronAPI?.gitCheckout(projectPath!, name);
@@ -227,120 +229,154 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
       <Menu.Portal>
         <Menu.Positioner sideOffset={4} align="center" className="z-50">
           <Menu.Popup className="w-60 rounded-lg border border-border bg-popover p-1 shadow-lg outline-none">
-            {/* ── Branches ── */}
-            <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
-              Branches
+            {/* ── Tabs ── */}
+            <div className="flex border-b border-border/30 px-1">
+              <button
+                type="button"
+                onClick={() => setDropdownTab("branches")}
+                className={[
+                  "flex items-center gap-1.5 border-b-2 px-2 py-1.5 text-[11px] font-medium transition-colors",
+                  dropdownTab === "branches"
+                    ? "border-foreground/50 text-foreground/80"
+                    : "border-transparent text-muted-foreground/40 hover:text-muted-foreground/70",
+                ].join(" ")}
+              >
+                <GitBranch className="size-3" />
+                Branches
+              </button>
+              <button
+                type="button"
+                onClick={() => setDropdownTab("worktrees")}
+                className={[
+                  "flex items-center gap-1.5 border-b-2 px-2 py-1.5 text-[11px] font-medium transition-colors",
+                  dropdownTab === "worktrees"
+                    ? "border-foreground/50 text-foreground/80"
+                    : "border-transparent text-muted-foreground/40 hover:text-muted-foreground/70",
+                ].join(" ")}
+              >
+                <FolderTree className="size-3" />
+                Worktrees
+              </button>
             </div>
 
-            {localBranches.map((b) => (
-              <Menu.Item
-                key={b.name}
-                className={[
-                  "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] outline-none transition-colors",
-                  b.isCurrent
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                ].join(" ")}
-                onClick={() => !b.isCurrent && handleCheckout(b.name)}
-              >
-                <GitBranch className="size-3 shrink-0 text-muted-foreground/40" />
-                <span className="min-w-0 flex-1 truncate">{b.name}</span>
-                {b.isCurrent && (
-                  <Check className="size-3 shrink-0 text-muted-foreground/40" />
-                )}
-                {!b.isCurrent && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCreateWorktree(b.name);
-                    }}
-                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/20 transition-colors hover:bg-muted hover:text-foreground"
-                    title={`Create worktree for ${b.name}`}
-                  >
-                    <FolderTree className="size-3" />
-                  </button>
-                )}
-              </Menu.Item>
-            ))}
-
-            {/* ── Create branch ── */}
-            {showCreate ? (
-              <div
-                className="flex items-center gap-1 px-1 py-1"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Branch name…"
-                  autoFocus
-                  disabled={creating}
-                  className="min-w-0 flex-1 rounded border border-border/50 bg-transparent px-1.5 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-foreground/20 focus:outline-none"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCreate();
-                    if (e.key === "Escape") {
-                      setShowCreate(false);
-                      setNewName("");
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleCreate}
-                  disabled={!newName.trim() || creating}
-                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
-                >
-                  <Check className="size-3" />
-                </button>
-              </div>
-            ) : (
-              <Menu.Item
-                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] text-muted-foreground/50 outline-none transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setShowCreate(true)}
-              >
-                <Plus className="size-3 shrink-0" />
-                <span>Create Branch</span>
-              </Menu.Item>
-            )}
-
-            {/* ── Worktrees ── */}
-            {hasMultipleWorktrees && (
-              <>
-                <div className="my-1 border-t border-border/30" />
-                <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40">
-                  Worktrees
-                </div>
-                {worktrees.map((wt) => {
-                  const isCurrent =
-                    wt.path.replace(/\\/g, "/") ===
-                    projectPath?.replace(/\\/g, "/");
-                  return (
+            <div className="pt-1">
+              {/* ── Branches tab ── */}
+              {dropdownTab === "branches" && (
+                <>
+                  {localBranches.map((b) => (
                     <Menu.Item
-                      key={wt.path}
+                      key={b.name}
                       className={[
-                        "flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1 text-[12px] outline-none",
-                        isCurrent
+                        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] outline-none transition-colors",
+                        b.isCurrent
                           ? "bg-muted text-foreground"
-                          : "text-muted-foreground",
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       ].join(" ")}
+                      onClick={() => !b.isCurrent && handleCheckout(b.name)}
                     >
-                      <FolderTree className="size-3 shrink-0 text-muted-foreground/40" />
-                      <div className="min-w-0 flex-1">
-                        <span className="block truncate">{wt.ref}</span>
-                        <span className="block truncate text-[10px] text-muted-foreground/30">
-                          {wt.path}
-                        </span>
-                      </div>
-                      {isCurrent && (
+                      <GitBranch className="size-3 shrink-0 text-muted-foreground/40" />
+                      <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                      {b.isCurrent && (
                         <Check className="size-3 shrink-0 text-muted-foreground/40" />
                       )}
+                      {!b.isCurrent && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCreateWorktree(b.name);
+                          }}
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/20 transition-colors hover:bg-muted hover:text-foreground"
+                          title={`Create worktree for ${b.name}`}
+                        >
+                          <FolderTree className="size-3" />
+                        </button>
+                      )}
                     </Menu.Item>
-                  );
-                })}
-              </>
-            )}
+                  ))}
+
+                  {/* Create branch */}
+                  {showCreate ? (
+                    <div
+                      className="flex items-center gap-1 px-1 py-1"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Branch name…"
+                        autoFocus
+                        disabled={creating}
+                        className="min-w-0 flex-1 rounded border border-border/50 bg-transparent px-1.5 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-foreground/20 focus:outline-none"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleCreate();
+                          if (e.key === "Escape") {
+                            setShowCreate(false);
+                            setNewName("");
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreate}
+                        disabled={!newName.trim() || creating}
+                        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                      >
+                        <Check className="size-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Menu.Item
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] text-muted-foreground/50 outline-none transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => setShowCreate(true)}
+                    >
+                      <Plus className="size-3 shrink-0" />
+                      <span>Create Branch</span>
+                    </Menu.Item>
+                  )}
+                </>
+              )}
+
+              {/* ── Worktrees tab ── */}
+              {dropdownTab === "worktrees" && (
+                <>
+                  {worktrees.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-[11px] text-muted-foreground/30">
+                      No worktrees
+                    </div>
+                  ) : (
+                    worktrees.map((wt) => {
+                      const isCurrent =
+                        wt.path.replace(/\\/g, "/") ===
+                        projectPath?.replace(/\\/g, "/");
+                      return (
+                        <Menu.Item
+                          key={wt.path}
+                          className={[
+                            "flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1 text-[12px] outline-none",
+                            isCurrent
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground",
+                          ].join(" ")}
+                        >
+                          <FolderTree className="size-3 shrink-0 text-muted-foreground/40" />
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate">{wt.ref}</span>
+                            <span className="block truncate text-[10px] text-muted-foreground/30">
+                              {wt.path}
+                            </span>
+                          </div>
+                          {isCurrent && (
+                            <Check className="size-3 shrink-0 text-muted-foreground/40" />
+                          )}
+                        </Menu.Item>
+                      );
+                    })
+                  )}
+                </>
+              )}
+            </div>
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
