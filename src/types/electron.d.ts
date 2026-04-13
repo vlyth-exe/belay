@@ -8,6 +8,14 @@ import type {
   AcpPlanUpdate,
 } from "./acp";
 
+export interface DirEntry {
+  name: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  size: number;
+  modifiedAt: number | null;
+}
+
 export interface ElectronAPI {
   // Project
   projectOpenDirectory: () => Promise<string | null>;
@@ -123,6 +131,9 @@ export interface ElectronAPI {
     callback: (request: AcpPermissionRequest) => void,
   ) => () => void;
   acpRespondPermission: (requestId: string, optionId: string) => Promise<void>;
+
+  // File system - Directory explorer
+  fsReadDir: (dirPath: string) => Promise<DirEntry[]>;
 
   // Terminal
   terminalSpawn: (

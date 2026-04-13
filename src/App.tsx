@@ -4,6 +4,7 @@ import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
 import { TerminalPanel } from "@/components/terminal/terminal-panel";
+import { RightSidebar } from "@/components/side-pane/right-sidebar";
 import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
 import { MessageStoreProvider } from "@/stores/message-store";
 import { SessionStatusStoreProvider } from "@/stores/session-status-store";
@@ -268,33 +269,42 @@ function AppLayout() {
               return (
                 <div
                   key={session.id}
-                  className={
-                    isActive ? "absolute inset-0 flex flex-col" : "hidden"
-                  }
+                  className={isActive ? "absolute inset-0 flex" : "hidden"}
                 >
-                  <Chat
-                    sessionId={session.id}
-                    projectId={project.id}
-                    projectPath={project.path}
-                    terminalOpen={isTerminalOpen}
-                    onToggleTerminal={() =>
-                      toggleTerminal(session.id, spawnOptions)
-                    }
-                  />
-                  {isTerminalOpen && (
-                    <TerminalPanel
+                  {/* Chat + Terminal column */}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <Chat
+                      sessionId={session.id}
+                      projectId={project.id}
                       projectPath={project.path}
-                      tabs={terminalData!.tabs}
-                      activeTabId={terminalData!.activeTabId}
-                      onSelectTab={(tabId) => selectTab(session.id, tabId)}
-                      onAddTab={() => addTab(session.id, spawnOptions)}
-                      onCloseTab={(tabId) => closeTab(session.id, tabId)}
-                      onRenameTab={(tabId, label) =>
-                        renameTab(session.id, tabId, label)
+                      terminalOpen={isTerminalOpen}
+                      onToggleTerminal={() =>
+                        toggleTerminal(session.id, spawnOptions)
                       }
-                      onReorderTabs={(fromIndex, toIndex) =>
-                        reorderTabs(session.id, fromIndex, toIndex)
-                      }
+                    />
+                    {isTerminalOpen && (
+                      <TerminalPanel
+                        projectPath={project.path}
+                        tabs={terminalData!.tabs}
+                        activeTabId={terminalData!.activeTabId}
+                        onSelectTab={(tabId) => selectTab(session.id, tabId)}
+                        onAddTab={() => addTab(session.id, spawnOptions)}
+                        onCloseTab={(tabId) => closeTab(session.id, tabId)}
+                        onRenameTab={(tabId, label) =>
+                          renameTab(session.id, tabId, label)
+                        }
+                        onReorderTabs={(fromIndex, toIndex) =>
+                          reorderTabs(session.id, fromIndex, toIndex)
+                        }
+                      />
+                    )}
+                  </div>
+
+                  {/* Right sidebar — directory explorer per session */}
+                  {isActive && (
+                    <RightSidebar
+                      projectPath={project.path}
+                      projectName={project.name}
                     />
                   )}
                 </div>

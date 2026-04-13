@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { connectionManager } from "./acp/connection-manager.js";
 import { terminalManager } from "./terminal.js";
 import {
@@ -175,6 +176,54 @@ ipcMain.handle(
 ipcMain.handle("session:deleteMessages", async (_event, sessionId: string) => {
   await deleteSessionMessages(sessionId);
 });
+
+// ── IPC handlers for directory explorer ──────────────────────────────
+
+export interface DirEntry {
+  name: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  size: number;
+  modifiedAt: number | null;
+}
+
+ipcMain.handle(
+  "fs:readDir",
+  async (_event, dirPath: string): Promise<DirEntry[]> => {
+    try {
+      const entries = await fs.promises.readdir(dirPath, {
+        withFileTypes: true,
+      });
+      const results: DirEntry[] = [];
+      for (const entry of entries) {
+        // Skip hidden files/dirs (starting with a dot)
+        if (entry.name.startsWith(".")) continue;
+        try {
+          const fullPath = path.join(dirPath, entry.name);
+          const stat = await fs.promises.stat(fullPath);
+          results.push({
+            name: entry.name,
+            isDirectory: stat.isDirectory(),
+            isFile: stat.isFile(),
+            size: stat.size,
+            modifiedAt: stat.mtimeMs,
+          });
+        } catch {
+          // Skip entries we can't stat (permission issues, broken symlinks, etc.)
+        }
+      }
+      // Sort: directories first, then alphabetical
+      results.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      return results;
+    } catch {
+      return [];
+    }
+  },
+);
 
 // ── IPC handlers for ACP operations ──────────────────────────────────
 

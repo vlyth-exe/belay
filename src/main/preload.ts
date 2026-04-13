@@ -145,6 +145,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   acpRespondPermission: (requestId: string, optionId: string) =>
     ipcRenderer.invoke("acp:respondPermission", requestId, optionId),
 
+  // File system - Directory explorer
+  fsReadDir: (dirPath: string) => ipcRenderer.invoke("fs:readDir", dirPath),
+
   // Terminal
   terminalSpawn: (
     id: string,
