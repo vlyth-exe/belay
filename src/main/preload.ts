@@ -146,8 +146,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("acp:respondPermission", requestId, optionId),
 
   // Terminal
-  terminalSpawn: (id: string, cwd?: string) =>
-    ipcRenderer.invoke("terminal:spawn", id, cwd),
+  terminalSpawn: (
+    id: string,
+    cwd?: string,
+    options?: {
+      shell?: string;
+      args?: string[];
+      isWsl?: boolean;
+      wslDistro?: string;
+    },
+  ) => ipcRenderer.invoke("terminal:spawn", id, cwd, options),
   terminalWrite: (id: string, data: string) =>
     ipcRenderer.send("terminal:write", id, data),
   terminalResize: (id: string, cols: number, rows: number) =>

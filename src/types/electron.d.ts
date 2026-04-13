@@ -125,7 +125,16 @@ export interface ElectronAPI {
   acpRespondPermission: (requestId: string, optionId: string) => Promise<void>;
 
   // Terminal
-  terminalSpawn: (id: string, cwd?: string) => Promise<void>;
+  terminalSpawn: (
+    id: string,
+    cwd?: string,
+    options?: {
+      shell?: string;
+      args?: string[];
+      isWsl?: boolean;
+      wslDistro?: string;
+    },
+  ) => Promise<void>;
   terminalWrite: (id: string, data: string) => void;
   terminalResize: (id: string, cols: number, rows: number) => void;
   terminalKill: (id: string) => void;

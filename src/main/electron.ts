@@ -278,9 +278,22 @@ ipcMain.handle(
 
 // ── IPC handlers for terminal operations ──────────────────────────────
 
-ipcMain.handle("terminal:spawn", async (_event, id: string, cwd?: string) => {
-  terminalManager.spawn(id, cwd);
-});
+ipcMain.handle(
+  "terminal:spawn",
+  async (
+    _event,
+    id: string,
+    cwd?: string,
+    options?: {
+      shell?: string;
+      args?: string[];
+      isWsl?: boolean;
+      wslDistro?: string;
+    },
+  ) => {
+    terminalManager.spawn(id, cwd, options);
+  },
+);
 
 ipcMain.on("terminal:write", (_event, id: string, data: string) => {
   terminalManager.write(id, data);

@@ -10,6 +10,17 @@ export interface TerminalInstance {
   cwd: string;
 }
 
+export interface SpawnOptions {
+  /** Shell executable. Defaults to the platform default. */
+  shell?: string;
+  /** Arguments passed to the shell. */
+  args?: string[];
+  /** If true, spawn inside WSL (Windows only). */
+  isWsl?: boolean;
+  /** WSL distribution name (e.g. "Ubuntu"). Implies isWsl. */
+  wslDistro?: string;
+}
+
 export class TerminalManager {
   private instances: Map<string, TerminalInstance> = new Map();
   private mainWindow: BrowserWindow | null = null;
@@ -18,28 +29,58 @@ export class TerminalManager {
     this.mainWindow = win;
   }
 
-  spawn(id: string, cwd?: string): TerminalInstance {
+  spawn(id: string, cwd?: string, options?: SpawnOptions): TerminalInstance {
     const platform = os.platform();
-    let shell: string;
+    const isWindows = platform === "win32";
+    const useWsl = options?.isWsl || !!options?.wslDistro;
 
-    if (platform === "win32") {
+    let shell: string;
+    let spawnArgs: string[];
+
+    if (options?.shell) {
+      // User-defined profile
+      shell = options.shell;
+      spawnArgs = options.args ?? [];
+    } else if (isWindows && useWsl) {
+      // WSL default (no custom shell specified)
+      shell = "wsl.exe";
+      spawnArgs = [];
+      if (options?.wslDistro) {
+        spawnArgs.push("-d", options.wslDistro);
+      }
+    } else if (isWindows) {
       shell = process.env.COMSPEC || "cmd.exe";
+      spawnArgs = [];
     } else if (platform === "darwin") {
       shell = "/bin/zsh";
-      // Fallback to bash if zsh doesn't exist
       if (!existsSync(shell)) {
         shell = "/bin/bash";
       }
+      spawnArgs = [];
     } else {
       shell = "/bin/bash";
+      spawnArgs = [];
     }
 
     const workingDir = cwd || os.homedir();
+
+    // On Windows with WSL, convert the working directory to a WSL path
+    let effectiveCwd = workingDir;
+    if (isWindows && useWsl && workingDir) {
+      // Convert C:\path → /mnt/c/path
+      effectiveCwd = workingDir
+        .replace(/\\/g, "/")
+        .replace(
+          /^([A-Za-z]):/,
+          (_, letter: string) => `/mnt/${letter.toLowerCase()}`,
+        );
+    }
+
     const name = path.basename(shell);
 
-    const ptyProcess = pty.spawn(shell, [], {
+    const ptyProcess = pty.spawn(shell, spawnArgs, {
       name,
-      cwd: workingDir,
+      cwd: effectiveCwd,
       env: process.env as Record<string, string>,
     });
 

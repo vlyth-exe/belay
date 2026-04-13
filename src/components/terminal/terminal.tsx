@@ -222,11 +222,22 @@ interface TerminalProps {
   id: string;
   cwd?: string;
   onClose: () => void;
+  spawnOptions?: {
+    shell?: string;
+    args?: string[];
+    isWsl?: boolean;
+    wslDistro?: string;
+  };
 }
 
 // ── Component ───────────────────────────────────────────────────────
 
-export function TerminalView({ id, cwd, onClose }: TerminalProps) {
+export function TerminalView({
+  id,
+  cwd,
+  onClose,
+  spawnOptions,
+}: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
 
@@ -279,7 +290,7 @@ export function TerminalView({ id, cwd, onClose }: TerminalProps) {
     });
 
     // ── Spawn the PTY process ──────────────────────────────────────
-    window.electronAPI?.terminalSpawn(id, cwd);
+    window.electronAPI?.terminalSpawn(id, cwd, spawnOptions);
 
     // ── React to theme changes via MutationObserver ────────────────
     //
@@ -309,7 +320,7 @@ export function TerminalView({ id, cwd, onClose }: TerminalProps) {
       terminal.dispose();
       terminalRef.current = null;
     };
-  }, [id, cwd, onClose]);
+  }, [id, cwd, onClose, spawnOptions]);
 
   return <div ref={containerRef} className="h-full w-full p-2" />;
 }

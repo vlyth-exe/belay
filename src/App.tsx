@@ -7,12 +7,21 @@ import { TerminalPanel } from "@/components/terminal/terminal-panel";
 import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
 import { MessageStoreProvider } from "@/stores/message-store";
 import { SessionStatusStoreProvider } from "@/stores/session-status-store";
+import { useInstalledHarnesses } from "@/hooks/use-acp";
 
-// ── Terminal tab types ──────────────────────────────────────────────
+// ── Terminal types ──────────────────────────────────────────────────
+
+export interface SpawnOptions {
+  shell?: string;
+  args?: string[];
+  isWsl?: boolean;
+  wslDistro?: string;
+}
 
 export interface TerminalTab {
   id: string;
   label: string;
+  spawnOptions?: SpawnOptions;
 }
 
 interface SessionTerminals {
@@ -21,25 +30,12 @@ interface SessionTerminals {
   nextLabel: number;
 }
 
-function createInitialTab(): { tab: TerminalTab; nextLabel: number } {
-  const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  return { tab: { id: tabId, label: "Terminal 1" }, nextLabel: 2 };
-}
-
-function createNextTab(counter: number): {
-  tab: TerminalTab;
-  nextLabel: number;
-} {
-  const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  return {
-    tab: { id: tabId, label: `Terminal ${counter}` },
-    nextLabel: counter + 1,
-  };
-}
+// ── App layout ─────────────────────────────────────────────────────
 
 function AppLayout() {
   const { openProjects, activeProjectId, setActiveProject, setActiveSession } =
     useProjectStore();
+  const { harnesses } = useInstalledHarnesses();
 
   // ── Terminal state: multiple tabs per session ─────────────────────
   const [sessionTerminals, setSessionTerminals] = useState<
@@ -53,33 +49,43 @@ function AppLayout() {
   };
 
   /** Toggle terminal panel for a session. If panel is closed, open with
-   *  one tab. If panel is already open, add a new tab. */
-  const toggleTerminal = useCallback((sessionId: string) => {
-    setSessionTerminals((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(sessionId);
+   *  one tab. If panel is already open, add a new tab.  Spawn options
+   *  are captured at creation time from the session's active agent. */
+  const toggleTerminal = useCallback(
+    (sessionId: string, spawnOptions?: SpawnOptions) => {
+      setSessionTerminals((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(sessionId);
 
-      if (!existing || existing.tabs.length === 0) {
-        // Open panel with first tab
-        const { tab, nextLabel } = createInitialTab();
-        next.set(sessionId, {
-          tabs: [tab],
-          activeTabId: tab.id,
-          nextLabel,
-        });
-      } else {
-        // Add a new tab and make it active
-        const { tab, nextLabel } = createNextTab(existing.nextLabel);
-        next.set(sessionId, {
-          tabs: [...existing.tabs, tab],
-          activeTabId: tab.id,
-          nextLabel,
-        });
-      }
+        if (!existing || existing.tabs.length === 0) {
+          const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          next.set(sessionId, {
+            tabs: [{ id: tabId, label: "Terminal 1", spawnOptions }],
+            activeTabId: tabId,
+            nextLabel: 2,
+          });
+        } else {
+          const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          next.set(sessionId, {
+            ...existing,
+            tabs: [
+              ...existing.tabs,
+              {
+                id: tabId,
+                label: `Terminal ${existing.nextLabel}`,
+                spawnOptions,
+              },
+            ],
+            activeTabId: tabId,
+            nextLabel: existing.nextLabel + 1,
+          });
+        }
 
-      return syncRef(next);
-    });
-  }, []);
+        return syncRef(next);
+      });
+    },
+    [],
+  );
 
   /** Close a specific terminal tab. Removes the panel if it was the last tab. */
   const closeTab = useCallback((sessionId: string, tabId: string) => {
@@ -189,6 +195,20 @@ function AppLayout() {
               const isTerminalOpen =
                 !!terminalData && terminalData.tabs.length > 0;
 
+              // Detect WSL from the session's active agent harness.
+              // Spawn options are captured at tab-creation time so that
+              // switching agents later doesn't disrupt a running terminal.
+              const agentHarness = session.agentId
+                ? harnesses.find((h) => h.agentId === session.agentId)
+                : undefined;
+              const spawnOptions: SpawnOptions | undefined =
+                agentHarness?.useWsl
+                  ? {
+                      isWsl: true,
+                      wslDistro: agentHarness.wslDistro || undefined,
+                    }
+                  : undefined;
+
               return (
                 <div
                   key={session.id}
@@ -201,7 +221,9 @@ function AppLayout() {
                     projectId={project.id}
                     projectPath={project.path}
                     terminalOpen={isTerminalOpen}
-                    onToggleTerminal={() => toggleTerminal(session.id)}
+                    onToggleTerminal={() =>
+                      toggleTerminal(session.id, spawnOptions)
+                    }
                   />
                   {isTerminalOpen && (
                     <TerminalPanel
@@ -209,7 +231,7 @@ function AppLayout() {
                       tabs={terminalData!.tabs}
                       activeTabId={terminalData!.activeTabId}
                       onSelectTab={(tabId) => selectTab(session.id, tabId)}
-                      onAddTab={() => toggleTerminal(session.id)}
+                      onAddTab={() => toggleTerminal(session.id, spawnOptions)}
                       onCloseTab={(tabId) => closeTab(session.id, tabId)}
                     />
                   )}

@@ -12,12 +12,18 @@ import {
   Globe,
   Bell,
   BellOff,
+  TerminalSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useInstalledHarnesses, useAcpActions } from "@/hooks/use-acp";
 import {
   getNotificationsEnabled,
   setNotificationsEnabled,
+  getTerminalProfiles,
+  addTerminalProfile,
+  updateTerminalProfile,
+  removeTerminalProfile,
+  type TerminalProfile,
 } from "@/lib/app-settings";
 
 interface SettingsDialogProps {
@@ -77,6 +83,40 @@ export function SettingsDialog({
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, AgentEdits>>({});
   const [dirty, setDirty] = useState<Set<string>>(new Set());
+
+  // ── Terminal profiles ──────────────────────────────────────────────
+  const [terminalProfiles, setTerminalProfilesState] =
+    useState<TerminalProfile[]>(getTerminalProfiles);
+
+  const reloadProfiles = useCallback(() => {
+    setTerminalProfilesState(getTerminalProfiles());
+  }, []);
+
+  const handleAddProfile = useCallback(() => {
+    addTerminalProfile({
+      name: "New Profile",
+      shell: "",
+      args: [],
+      isWsl: false,
+    });
+    reloadProfiles();
+  }, [reloadProfiles]);
+
+  const handleRemoveProfile = useCallback(
+    (id: string) => {
+      removeTerminalProfile(id);
+      reloadProfiles();
+    },
+    [reloadProfiles],
+  );
+
+  const handleUpdateProfile = useCallback(
+    (id: string, updates: Partial<Omit<TerminalProfile, "id">>) => {
+      updateTerminalProfile(id, updates);
+      reloadProfiles();
+    },
+    [reloadProfiles],
+  );
   const [saving, setSaving] = useState<string | null>(null);
   const initializedRef = useRef(false);
 
@@ -718,6 +758,144 @@ export function SettingsDialog({
                 })}
               </div>
             )}
+          </div>
+
+          {/* Terminal section */}
+          <div className="border-b border-border px-5 py-4">
+            <div className="mb-1 flex items-center gap-2">
+              <TerminalSquare className="size-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Terminal</h3>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Define custom terminal profiles. When an agent is configured to
+              use WSL, new terminals for that session automatically launch in
+              the matching WSL distribution.
+            </p>
+
+            {terminalProfiles.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                No custom profiles. The default system shell is used.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {terminalProfiles.map((profile) => (
+                  <div
+                    key={profile.id}
+                    className="rounded-lg border border-border"
+                  >
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <input
+                        type="text"
+                        value={profile.name}
+                        onChange={(e) =>
+                          handleUpdateProfile(profile.id, {
+                            name: e.target.value,
+                          })
+                        }
+                        className="flex-1 rounded-md border border-border bg-transparent px-2 py-1 text-sm outline-none focus:border-ring"
+                        placeholder="Profile name"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveProfile(profile.id)}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 border-t border-border px-3 py-2">
+                      <div>
+                        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Shell
+                        </label>
+                        <input
+                          type="text"
+                          value={profile.shell}
+                          onChange={(e) =>
+                            handleUpdateProfile(profile.id, {
+                              shell: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-ring"
+                          placeholder="e.g. powershell.exe"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Arguments
+                        </label>
+                        <input
+                          type="text"
+                          value={profile.args.join(" ")}
+                          onChange={(e) =>
+                            handleUpdateProfile(profile.id, {
+                              args: e.target.value.split(" ").filter(Boolean),
+                            })
+                          }
+                          className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-ring"
+                          placeholder="e.g. -d Ubuntu"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-border px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          WSL mode
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={profile.isWsl}
+                          onClick={() =>
+                            handleUpdateProfile(profile.id, {
+                              isWsl: !profile.isWsl,
+                            })
+                          }
+                          className={
+                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors " +
+                            (profile.isWsl
+                              ? "bg-primary"
+                              : "bg-muted border border-border")
+                          }
+                        >
+                          <span
+                            className={
+                              "inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform " +
+                              (profile.isWsl
+                                ? "translate-x-4.5"
+                                : "translate-x-0.5")
+                            }
+                          />
+                        </button>
+                      </div>
+                      {profile.isWsl && (
+                        <input
+                          type="text"
+                          value={profile.wslDistro ?? ""}
+                          onChange={(e) =>
+                            handleUpdateProfile(profile.id, {
+                              wslDistro: e.target.value || undefined,
+                            })
+                          }
+                          className="w-40 rounded-md border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-ring"
+                          placeholder="Distro (e.g. Ubuntu)"
+                        />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 w-full gap-2"
+              onClick={handleAddProfile}
+            >
+              <Plus className="size-3.5" />
+              Add Profile
+            </Button>
           </div>
 
           {/* Notifications section */}

@@ -125,6 +125,7 @@ export function TerminalPanel({
               id={tab.id}
               cwd={projectPath}
               onClose={() => onCloseTab(tab.id)}
+              spawnOptions={tab.spawnOptions}
             />
           </div>
         ))}
