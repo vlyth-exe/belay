@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { Minus, Square, X, Globe, Settings, GitBranch, Plus, Check, FolderTree, MoreHorizontal, Trash2, SplitSquareHorizontal } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import belayIcon from "/Belay.svg";
@@ -383,6 +383,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                         wt.path.replace(/\\/g, "/") ===
                         projectPath?.replace(/\\/g, "/");
                       return (
+                        <Fragment key={wt.path}>
                         <Menu.Item
                           key={wt.path}
                           className={[
@@ -457,6 +458,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                             </button>
                           </div>
                         )}
+                        </Fragment>
                       );
                     })
                   )}
