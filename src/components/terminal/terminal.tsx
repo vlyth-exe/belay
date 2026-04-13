@@ -11,33 +11,50 @@ import "@xterm/xterm/css/xterm.css";
  * oklch, hsl, etc.) to computed `rgb()` values.  Created lazily, kept
  * for the lifetime of the page.
  */
-let _probe: HTMLDivElement | null = null;
-
-function getProbe(): HTMLDivElement | null {
-  if (typeof document === "undefined") return null;
-  if (!_probe) {
-    _probe = document.createElement("div");
-    _probe.style.display = "none";
-    _probe.style.position = "absolute";
-    _probe.style.pointerEvents = "none";
-    document.body.appendChild(_probe);
-  }
-  return _probe;
-}
-
 /**
  * Read a CSS custom property from `:root` and return the value as
- * `#rrggbb`.  Uses a real DOM element so the browser resolves every
- * colour format (hex, oklch, hsl, named colours…) through the cascade.
+ * `#rrggbb`.  Reads the raw variable value from document.documentElement
+ * and uses a canvas 2D context to normalise any colour format (oklch,
+ * hsl, hex, named colours…) to a hex string.
+ *
+ * The previous approach set `color: var(…)` on a hidden probe element and
+ * parsed getComputedStyle().color with an `rgb(…)` regex.  That breaks
+ * for the default light/dark themes whose CSS vars use `oklch()` — modern
+ * Chromium (111+) preserves the originating colour space in computed
+ * values, so getComputedStyle returns `oklch(0.145 0 0)` instead of
+ * `rgb(37, 37, 37)`, and the regex never matches.
+ *
+ * The canvas 2D context's fillStyle setter accepts every valid CSS
+ * <color> and the getter always normalises to `#rrggbb` (opaque) or
+ * `rgba(…)` (semi-transparent), regardless of input format.
  */
 function cssVarToHex(name: string): string {
-  const probe = getProbe();
-  if (!probe) return "#000000";
+  if (typeof document === "undefined") return "#000000";
 
-  probe.style.color = `var(${name})`;
-  const computed = getComputedStyle(probe).color;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  if (!raw) return "#000000";
 
-  const match = computed.match(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/);
+  // Already a 6-digit hex colour — return as-is.
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+
+  // Canvas 2D normalises any CSS colour to #rrggbb / rgba(…).
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "#000000";
+
+  ctx.fillStyle = "#000000";
+  ctx.fillStyle = raw;
+  const normalised = ctx.fillStyle;
+
+  // Opaque — already #rrggbb.
+  if (/^#[0-9a-fA-F]{6}$/.test(normalised)) return normalised;
+
+  // Semi-transparent — strip alpha, convert RGB to hex.
+  const match = normalised.match(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/);
   if (!match) return "#000000";
 
   const r = parseInt(match[1]).toString(16).padStart(2, "0");
