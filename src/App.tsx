@@ -335,19 +335,14 @@ function AppLayout() {
   // ── Main layout ────────────────────────────────────────────────────
   const activeProject = openProjects.find((p) => p.id === activeProjectId);
   const activeSessionId = activeProject?.activeSessionId ?? null;
-  const activeSession = activeProject?.sessions.find(
-    (s) => s.id === activeSessionId,
-  );
+
 
   return (
     <div
       id="app-container"
       className="flex h-screen w-screen flex-col bg-background"
     >
-      <TitleBar
-        sessionTitle={activeSession?.title}
-        projectPath={activeProject?.path}
-      />
+      <TitleBar projectPath={activeProject?.path} />
       <div className="flex min-h-0 flex-1">
         <ProjectSidebar />
         {/* Chat area — render every session's chat; only the active one is visible */}

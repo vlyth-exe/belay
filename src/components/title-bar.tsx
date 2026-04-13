@@ -28,13 +28,11 @@ function RestoreIcon({ className }: { className?: string }) {
 }
 
 export interface TitleBarProps {
-  /** Active session title to display in the center. */
-  sessionTitle?: string;
   /** Project path used to look up the current git branch. */
   projectPath?: string;
 }
 
-export function TitleBar({ sessionTitle, projectPath }: TitleBarProps) {
+export function TitleBar({ projectPath }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [showRegistry, setShowRegistry] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -94,13 +92,8 @@ export function TitleBar({ sessionTitle, projectPath }: TitleBarProps) {
         </button>
       </div>
 
-      {/* Centre — session title + git branch */}
-      <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-4">
-        {sessionTitle && (
-          <span className="truncate text-[12px] text-muted-foreground/70">
-            {sessionTitle}
-          </span>
-        )}
+      {/* Centre — git branch dropdown */}
+      <div className="flex min-w-0 flex-1 items-center justify-center px-4">
         <BranchDropdown projectPath={projectPath} />
       </div>
 
