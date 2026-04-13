@@ -148,6 +148,41 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // File system - Directory explorer
   fsReadDir: (dirPath: string) => ipcRenderer.invoke("fs:readDir", dirPath),
 
+  // Git
+  gitIsRepo: (dirPath: string) => ipcRenderer.invoke("git:isRepo", dirPath),
+  gitStatus: (dirPath: string) => ipcRenderer.invoke("git:status", dirPath),
+  gitLog: (dirPath: string, maxCount?: number) =>
+    ipcRenderer.invoke("git:log", dirPath, maxCount),
+  gitBranches: (dirPath: string) =>
+    ipcRenderer.invoke("git:branches", dirPath),
+  gitDiffSummary: (dirPath: string, staged?: boolean) =>
+    ipcRenderer.invoke("git:diffSummary", dirPath, staged),
+  gitStage: (dirPath: string, ...files: string[]) =>
+    ipcRenderer.invoke("git:stage", dirPath, ...files),
+  gitUnstage: (dirPath: string, ...files: string[]) =>
+    ipcRenderer.invoke("git:unstage", dirPath, ...files),
+  gitCommit: (dirPath: string, message: string) =>
+    ipcRenderer.invoke("git:commit", dirPath, message),
+  gitPush: (dirPath: string) => ipcRenderer.invoke("git:push", dirPath),
+  gitPull: (dirPath: string) => ipcRenderer.invoke("git:pull", dirPath),
+  gitFetch: (dirPath: string) => ipcRenderer.invoke("git:fetch", dirPath),
+  gitCheckout: (dirPath: string, branch: string) =>
+    ipcRenderer.invoke("git:checkout", dirPath, branch),
+  gitCreateBranch: (dirPath: string, name: string, checkout?: boolean) =>
+    ipcRenderer.invoke("git:createBranch", dirPath, name, checkout),
+  gitListWorktrees: (dirPath: string) =>
+    ipcRenderer.invoke("git:listWorktrees", dirPath),
+  gitCreateWorktree: (
+    dirPath: string,
+    branch: string,
+    targetPath: string,
+  ) => ipcRenderer.invoke("git:createWorktree", dirPath, branch, targetPath),
+  gitRemoveWorktree: (
+    dirPath: string,
+    worktreePath: string,
+    force?: boolean,
+  ) => ipcRenderer.invoke("git:removeWorktree", dirPath, worktreePath, force),
+
   // Terminal
   terminalSpawn: (
     id: string,

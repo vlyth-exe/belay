@@ -7,6 +7,14 @@ import type {
   AcpPermissionRequest,
   AcpPlanUpdate,
 } from "./acp";
+import type {
+  GitStatus,
+  GitLogEntry,
+  GitBranch,
+  GitDiffStat,
+  GitWorktree,
+  GitError,
+} from "./git";
 
 export interface DirEntry {
   name: string;
@@ -134,6 +142,72 @@ export interface ElectronAPI {
 
   // File system - Directory explorer
   fsReadDir: (dirPath: string) => Promise<DirEntry[]>;
+
+  // Git
+  gitIsRepo: (dirPath: string) => Promise<boolean>;
+  gitStatus: (dirPath: string) => Promise<{
+    data: GitStatus | null;
+    error: GitError | null;
+  }>;
+  gitLog: (
+    dirPath: string,
+    maxCount?: number,
+  ) => Promise<{
+    data: GitLogEntry[] | null;
+    error: GitError | null;
+  }>;
+  gitBranches: (dirPath: string) => Promise<{
+    data: GitBranch[] | null;
+    error: GitError | null;
+  }>;
+  gitDiffSummary: (
+    dirPath: string,
+    staged?: boolean,
+  ) => Promise<{
+    data: GitDiffStat[] | null;
+    error: GitError | null;
+  }>;
+  gitStage: (
+    dirPath: string,
+    ...files: string[]
+  ) => Promise<GitError | null>;
+  gitUnstage: (
+    dirPath: string,
+    ...files: string[]
+  ) => Promise<GitError | null>;
+  gitCommit: (
+    dirPath: string,
+    message: string,
+  ) => Promise<{
+    data: string | null;
+    error: GitError | null;
+  }>;
+  gitPush: (dirPath: string) => Promise<GitError | null>;
+  gitPull: (dirPath: string) => Promise<GitError | null>;
+  gitFetch: (dirPath: string) => Promise<GitError | null>;
+  gitCheckout: (
+    dirPath: string,
+    branch: string,
+  ) => Promise<GitError | null>;
+  gitCreateBranch: (
+    dirPath: string,
+    name: string,
+    checkout?: boolean,
+  ) => Promise<GitError | null>;
+  gitListWorktrees: (dirPath: string) => Promise<{
+    data: GitWorktree[] | null;
+    error: GitError | null;
+  }>;
+  gitCreateWorktree: (
+    dirPath: string,
+    branch: string,
+    targetPath: string,
+  ) => Promise<GitError | null>;
+  gitRemoveWorktree: (
+    dirPath: string,
+    worktreePath: string,
+    force?: boolean,
+  ) => Promise<GitError | null>;
 
   // Terminal
   terminalSpawn: (

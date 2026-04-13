@@ -16,6 +16,7 @@ import {
   uninstallHarness,
   updateHarness,
 } from "./acp/harness-store.js";
+import * as git from "./git.js";
 
 // Set the App User Model ID so Windows shows "Belay" (not "electron")
 // as the notification source and groups the taskbar icon correctly.
@@ -215,6 +216,109 @@ ipcMain.handle("fs:readDir", async (_event, dirPath: string) => {
     return [];
   }
 });
+
+// ── IPC handlers for git operations ──────────────────────────────────
+
+ipcMain.handle("git:isRepo", async (_event, dirPath: string) => {
+  return git.isRepo(dirPath);
+});
+
+ipcMain.handle("git:status", async (_event, dirPath: string) => {
+  return git.getStatus(dirPath);
+});
+
+ipcMain.handle(
+  "git:log",
+  async (_event, dirPath: string, maxCount?: number) => {
+    return git.getLog(dirPath, maxCount);
+  },
+);
+
+ipcMain.handle("git:branches", async (_event, dirPath: string) => {
+  return git.getBranches(dirPath);
+});
+
+ipcMain.handle(
+  "git:diffSummary",
+  async (_event, dirPath: string, staged?: boolean) => {
+    return git.getDiffSummary(dirPath, staged);
+  },
+);
+
+ipcMain.handle(
+  "git:stage",
+  async (_event, dirPath: string, ...files: string[]) => {
+    return git.stage(dirPath, ...files);
+  },
+);
+
+ipcMain.handle(
+  "git:unstage",
+  async (_event, dirPath: string, ...files: string[]) => {
+    return git.unstage(dirPath, ...files);
+  },
+);
+
+ipcMain.handle(
+  "git:commit",
+  async (_event, dirPath: string, message: string) => {
+    return git.commit(dirPath, message);
+  },
+);
+
+ipcMain.handle("git:push", async (_event, dirPath: string) => {
+  return git.push(dirPath);
+});
+
+ipcMain.handle("git:pull", async (_event, dirPath: string) => {
+  return git.pull(dirPath);
+});
+
+ipcMain.handle("git:fetch", async (_event, dirPath: string) => {
+  return git.fetch(dirPath);
+});
+
+ipcMain.handle(
+  "git:checkout",
+  async (_event, dirPath: string, branch: string) => {
+    return git.checkout(dirPath, branch);
+  },
+);
+
+ipcMain.handle(
+  "git:createBranch",
+  async (_event, dirPath: string, name: string, checkout?: boolean) => {
+    return git.createBranch(dirPath, name, checkout);
+  },
+);
+
+ipcMain.handle("git:listWorktrees", async (_event, dirPath: string) => {
+  return git.listWorktrees(dirPath);
+});
+
+ipcMain.handle(
+  "git:createWorktree",
+  async (
+    _event,
+    dirPath: string,
+    branch: string,
+    targetPath: string,
+  ) => {
+    return git.createWorktree(dirPath, branch, targetPath);
+  },
+);
+
+ipcMain.handle(
+  "git:removeWorktree",
+  async (
+    _event,
+    dirPath: string,
+    worktreePath: string,
+    force?: boolean,
+  ) => {
+    return git.removeWorktree(dirPath, worktreePath, force);
+  },
+);
 
 // ── IPC handlers for ACP operations ──────────────────────────────────
 

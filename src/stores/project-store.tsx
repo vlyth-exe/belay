@@ -36,6 +36,12 @@ type ProjectAction =
       sessionId: string;
       agentId: string | null;
     }
+  | {
+      type: "SET_SESSION_PATH";
+      projectId: string;
+      sessionId: string;
+      path: string | undefined;
+    }
   | { type: "REORDER_PROJECTS"; projectIds: string[] }
   | { type: "REORDER_SESSIONS"; projectId: string; sessionIds: string[] }
   | {
@@ -108,6 +114,11 @@ interface ProjectStoreContextValue extends ProjectState {
     projectId: string,
     sessionId: string,
     agentId: string | null,
+  ) => void;
+  setSessionPath: (
+    projectId: string,
+    sessionId: string,
+    path: string | undefined,
   ) => void;
   reorderProjects: (projectIds: string[]) => void;
   reorderSessions: (projectId: string, sessionIds: string[]) => void;
@@ -189,6 +200,7 @@ function ensureSessions(project: SerializedProject): Project {
     ...s,
     createdAt: new Date(s.createdAt),
     agentId: s.agentId ?? null,
+    path: s.path ?? undefined,
   }));
   // Backward compat: projects loaded from storage before sessions existed
   if (sessions.length === 0) {
@@ -425,6 +437,22 @@ function projectReducer(
             ...p,
             sessions: p.sessions.map((s) =>
               s.id === action.sessionId ? { ...s, agentId: action.agentId } : s,
+            ),
+          }),
+        ),
+      };
+    }
+
+    case "SET_SESSION_PATH": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            sessions: p.sessions.map((s) =>
+              s.id === action.sessionId ? { ...s, path: action.path } : s,
             ),
           }),
         ),
@@ -781,11 +809,19 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "SET_ACTIVE_PROJECT", projectId });
   }, []);
 
-  const addSession = useCallback((projectId: string): string => {
-    const session = makeDefaultSession();
-    dispatch({ type: "ADD_SESSION", projectId, session });
-    return session.id;
-  }, []);
+  const addSession = useCallback(
+    (projectId: string, overrides?: { title?: string; path?: string }): string => {
+      const base = makeDefaultSession();
+      const session: ChatSession = {
+        ...base,
+        title: overrides?.title ?? base.title,
+        path: overrides?.path,
+      };
+      dispatch({ type: "ADD_SESSION", projectId, session });
+      return session.id;
+    },
+    [],
+  );
 
   const removeSession = useCallback(
     (projectId: string, sessionId: string) => {
@@ -827,6 +863,13 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
   const setSessionAgent = useCallback(
     (projectId: string, sessionId: string, agentId: string | null) => {
       dispatch({ type: "SET_SESSION_AGENT", projectId, sessionId, agentId });
+    },
+    [],
+  );
+
+  const setSessionPath = useCallback(
+    (projectId: string, sessionId: string, path: string | undefined) => {
+      dispatch({ type: "SET_SESSION_PATH", projectId, sessionId, path });
     },
     [],
   );
@@ -963,6 +1006,7 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         setActiveSession,
         renameSession,
         setSessionAgent,
+        setSessionPath,
         reorderProjects,
         reorderSessions,
         createGroup,
