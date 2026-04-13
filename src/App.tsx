@@ -4,7 +4,7 @@ import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
 import { TerminalPanel } from "@/components/terminal/terminal-panel";
-import { RightSidebar } from "@/components/side-pane/right-sidebar";
+import { RightSidebar, type SidebarTab } from "@/components/side-pane/right-sidebar";
 import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
 import { MessageStoreProvider } from "@/stores/message-store";
 import { SessionStatusStoreProvider } from "@/stores/session-status-store";
@@ -417,7 +417,7 @@ function AppLayout() {
                     <RightSidebar
                       isOpen={sessionSidebarOpen.has(session.id)}
                       onToggle={() => toggleSidebar(session.id)}
-                      activeTab={sessionSidebarTab.get(session.id) ?? "explorer"}
+                      activeTab={(sessionSidebarTab.get(session.id) as SidebarTab | undefined) ?? "explorer"}
                       onTabChange={(tab: string) => setSessionTab(session.id, tab)}
                       projectPath={effectivePath}
                       projectName={project.name}

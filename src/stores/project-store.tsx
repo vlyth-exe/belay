@@ -106,7 +106,7 @@ interface ProjectStoreContextValue extends ProjectState {
   closeProject: (projectId: string) => void;
   setActiveProject: (projectId: string) => void;
   pathToId: (path: string) => string;
-  addSession: (projectId: string) => string;
+  addSession: (projectId: string, overrides?: { title?: string; path?: string }) => string;
   removeSession: (projectId: string, sessionId: string) => void;
   setActiveSession: (projectId: string, sessionId: string) => void;
   renameSession: (projectId: string, sessionId: string, title: string) => void;
@@ -196,7 +196,7 @@ interface SerializedProject extends Omit<
 }
 
 function ensureSessions(project: SerializedProject): Project {
-  const sessions = (project.sessions ?? []).map((s) => ({
+  const sessions: ChatSession[] = (project.sessions ?? []).map((s) => ({
     ...s,
     createdAt: new Date(s.createdAt),
     agentId: s.agentId ?? null,

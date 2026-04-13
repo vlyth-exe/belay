@@ -8,7 +8,7 @@ import { GitPanel } from "@/components/git/git-panel";
 
 // ── Tab types ────────────────────────────────────────────────────────
 
-type SidebarTab = "explorer" | "git";
+export type SidebarTab = "explorer" | "git";
 
 interface TabDef {
   id: SidebarTab;
