@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Minus, Square, X, Globe, Settings, GitBranch, Plus, Check, FolderTree } from "lucide-react";
+import { Minus, Square, X, Globe, Settings, GitBranch, Plus, Check, FolderTree, MoreHorizontal, Trash2, SplitSquareHorizontal } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import belayIcon from "/Belay.svg";
 
@@ -31,9 +31,13 @@ function RestoreIcon({ className }: { className?: string }) {
 export interface TitleBarProps {
   /** Project path used to look up the current git branch. */
   projectPath?: string;
+  /** Active project ID for session management. */
+  projectId?: string;
+  /** Active session ID for worktree path switching. */
+  sessionId?: string;
 }
 
-export function TitleBar({ projectPath }: TitleBarProps) {
+export function TitleBar({ projectPath, projectId, sessionId }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [showRegistry, setShowRegistry] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -95,7 +99,7 @@ export function TitleBar({ projectPath }: TitleBarProps) {
 
       {/* Centre — git branch dropdown */}
       <div className="flex min-w-0 flex-1 items-center justify-center px-4">
-        <BranchDropdown projectPath={projectPath} />
+        <BranchDropdown projectPath={projectPath} projectId={projectId} sessionId={sessionId} />
       </div>
 
       {/* Settings & theme toggle */}
@@ -171,15 +175,16 @@ export function TitleBar({ projectPath }: TitleBarProps) {
 
 // ── Branch/worktree dropdown ─────────────────────────────────────────
 
-function BranchDropdown({ projectPath }: { projectPath?: string }) {
+function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: string; projectId?: string; sessionId?: string }) {
   const { branch, isRepo, branches, worktrees, refresh } =
     useGitBranch(projectPath);
-  const { addSession, activeProjectId } = useProjectStore();
+  const { addSession, setSessionPath, activeProjectId } = useProjectStore();
   const [dropdownTab, setDropdownTab] = useState<"branches" | "worktrees">(
     "branches",
   );
   const [newBranchName, setNewBranchName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [contextWorktree, setContextWorktree] = useState<string | null>(null);
 
   if (!isRepo || !branch) return null;
 
@@ -386,14 +391,12 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                               ? "bg-muted text-foreground"
                               : "cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground",
                           ].join(" ")}
-                          onClick={() =>
-                            !isCurrent &&
-                            activeProjectId &&
-                            addSession(activeProjectId, {
-                              title: wt.ref,
-                              path: wt.path,
-                            })
-                          }
+                          onClick={() => {
+                            setContextWorktree(null);
+                            if (!isCurrent && projectId && sessionId) {
+                              setSessionPath(projectId, sessionId, wt.path);
+                            }
+                          }}
                         >
                           <FolderTree className="size-3 shrink-0 text-muted-foreground/40" />
                           <div className="min-w-0 flex-1">
@@ -405,7 +408,55 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                           {isCurrent && (
                             <Check className="size-3 shrink-0 text-muted-foreground/40" />
                           )}
+                          {!wt.isMain && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setContextWorktree(
+                                  contextWorktree === wt.path ? null : wt.path,
+                                );
+                              }}
+                              className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/20 transition-colors hover:bg-muted hover:text-foreground"
+                              title="More options"
+                            >
+                              <MoreHorizontal className="size-3" />
+                            </button>
+                          )}
                         </Menu.Item>
+                        {contextWorktree === wt.path && (
+                          <div className="flex items-center gap-1 pl-6 pr-2 py-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeProjectId) {
+                                  addSession(activeProjectId, { title: wt.ref, path: wt.path });
+                                }
+                                setContextWorktree(null);
+                              }}
+                              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                              <SplitSquareHorizontal className="size-3" />
+                              Open in new session
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await window.electronAPI?.gitRemoveWorktree(projectPath!, wt.path, true);
+                                // If current session was on this worktree, reset path
+                                if (isCurrent && projectId && sessionId) {
+                                  setSessionPath(projectId, sessionId, undefined);
+                                }
+                                setContextWorktree(null);
+                                refresh();
+                              }}
+                              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-destructive/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="size-3" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       );
                     })
                   )}

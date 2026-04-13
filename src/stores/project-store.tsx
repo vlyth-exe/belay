@@ -36,6 +36,12 @@ type ProjectAction =
       sessionId: string;
       agentId: string | null;
     }
+  | {
+      type: "SET_SESSION_PATH";
+      projectId: string;
+      sessionId: string;
+      path: string | undefined;
+    }
   | { type: "REORDER_PROJECTS"; projectIds: string[] }
   | { type: "REORDER_SESSIONS"; projectId: string; sessionIds: string[] }
   | {
@@ -108,6 +114,11 @@ interface ProjectStoreContextValue extends ProjectState {
     projectId: string,
     sessionId: string,
     agentId: string | null,
+  ) => void;
+  setSessionPath: (
+    projectId: string,
+    sessionId: string,
+    path: string | undefined,
   ) => void;
   reorderProjects: (projectIds: string[]) => void;
   reorderSessions: (projectId: string, sessionIds: string[]) => void;
@@ -426,6 +437,22 @@ function projectReducer(
             ...p,
             sessions: p.sessions.map((s) =>
               s.id === action.sessionId ? { ...s, agentId: action.agentId } : s,
+            ),
+          }),
+        ),
+      };
+    }
+
+    case "SET_SESSION_PATH": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            sessions: p.sessions.map((s) =>
+              s.id === action.sessionId ? { ...s, path: action.path } : s,
             ),
           }),
         ),
@@ -840,6 +867,13 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setSessionPath = useCallback(
+    (projectId: string, sessionId: string, path: string | undefined) => {
+      dispatch({ type: "SET_SESSION_PATH", projectId, sessionId, path });
+    },
+    [],
+  );
+
   const reorderProjects = useCallback((projectIds: string[]) => {
     dispatch({ type: "REORDER_PROJECTS", projectIds });
   }, []);
@@ -972,6 +1006,7 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         setActiveSession,
         renameSession,
         setSessionAgent,
+        setSessionPath,
         reorderProjects,
         reorderSessions,
         createGroup,

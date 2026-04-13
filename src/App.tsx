@@ -344,7 +344,11 @@ function AppLayout() {
       id="app-container"
       className="flex h-screen w-screen flex-col bg-background"
     >
-      <TitleBar projectPath={activeSession?.path ?? activeProject?.path} />
+      <TitleBar
+        projectPath={activeSession?.path ?? activeProject?.path}
+        projectId={activeProject?.id}
+        sessionId={activeSession?.id}
+      />
       <div className="flex min-h-0 flex-1">
         <ProjectSidebar />
         {/* Chat area — render every session's chat; only the active one is visible */}
