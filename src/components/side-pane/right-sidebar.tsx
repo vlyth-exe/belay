@@ -112,7 +112,7 @@ export function RightSidebar({
           className={[
             "flex min-w-0 flex-1 flex-col overflow-hidden",
             isOpen
-              ? "opacity-100"
+              ? "opacity-100 pr-3"
               : "pointer-events-none w-0 opacity-0",
             "transition-opacity duration-200",
           ].join(" ")}
