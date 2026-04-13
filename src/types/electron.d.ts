@@ -25,6 +25,9 @@ export interface DirEntry {
 }
 
 export interface ElectronAPI {
+  // App info
+  appVersion: () => Promise<string>;
+
   // Project
   projectOpenDirectory: () => Promise<string | null>;
 

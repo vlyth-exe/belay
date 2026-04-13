@@ -209,7 +209,7 @@ export function InsetHeader({ projectPath, projectId, sessionId }: TitleBarProps
 
   return (
     <header
-      className="flex h-9 shrink-0 select-none items-center px-1"
+      className="flex h-9 shrink-0 select-none items-center"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       onDoubleClick={handleMaximize}
     >

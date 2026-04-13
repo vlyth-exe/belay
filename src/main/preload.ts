@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  // App info
+  appVersion: () => ipcRenderer.invoke("app:version"),
+
   // Project
   projectOpenDirectory: () => ipcRenderer.invoke("project:openDirectory"),
 

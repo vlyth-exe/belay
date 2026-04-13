@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
+
 import { connectionManager } from "./acp/connection-manager.js";
 import { terminalManager } from "./terminal.js";
 import {
@@ -80,6 +81,14 @@ function createWindow(): void {
   // Set the main window for the terminal manager
   terminalManager.setMainWindow(mainWindow);
 }
+
+// ── App info ────────────────────────────────────────────────────────
+
+ipcMain.handle("app:version", () => {
+  const version = app.getVersion();
+  const major = parseInt(version.split(".")[0], 10);
+  return major === 0 ? `${version}α` : version;
+});
 
 // ── IPC handlers for window controls ──────────────────────────────────
 
