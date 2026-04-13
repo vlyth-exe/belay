@@ -2,6 +2,8 @@
   "name": "belay",
   "private": true,
   "version": "0.0.0",
+  "description": "Belay – a multi-session AI coding IDE",
+  "author": "Belay Contributors",
   "main": "dist/main/electron.js",
   "scripts": {
     "dev": "vite",
@@ -9,6 +11,7 @@
     "build": "tsc -b && vite build && tsc -p tsconfig.main.json",
     "lint": "eslint .",
     "preview": "vite preview",
+    "postinstall": "node scripts/patch-node-pty.js",
     "package": "npm run build && electron-builder"
   },
   "build": {
@@ -20,8 +23,14 @@
     "files": [
       "dist/**/*"
     ],
+    "forceCodeSigning": false,
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
     }
   },
   "dependencies": {
