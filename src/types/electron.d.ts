@@ -12,6 +12,7 @@ import type {
   GitLogEntry,
   GitBranch,
   GitDiffStat,
+  GitWorktree,
   GitError,
 } from "./git";
 
@@ -192,6 +193,20 @@ export interface ElectronAPI {
     dirPath: string,
     name: string,
     checkout?: boolean,
+  ) => Promise<GitError | null>;
+  gitListWorktrees: (dirPath: string) => Promise<{
+    data: GitWorktree[] | null;
+    error: GitError | null;
+  }>;
+  gitCreateWorktree: (
+    dirPath: string,
+    branch: string,
+    targetPath: string,
+  ) => Promise<GitError | null>;
+  gitRemoveWorktree: (
+    dirPath: string,
+    worktreePath: string,
+    force?: boolean,
   ) => Promise<GitError | null>;
 
   // Terminal

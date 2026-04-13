@@ -76,6 +76,19 @@ export interface GitDiffStat {
   binary: boolean;
 }
 
+// ── Git worktree type ────────────────────────────────────────────────
+
+export interface GitWorktree {
+  /** Absolute path to the worktree directory */
+  path: string;
+  /** Branch or commit the worktree is on */
+  ref: string;
+  /** True if this is the main/primary worktree */
+  isMain: boolean;
+  /** True if the worktree is locked */
+  isLocked: boolean;
+}
+
 // ── Git error type ───────────────────────────────────────────────────
 
 export interface GitError {

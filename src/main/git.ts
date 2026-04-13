@@ -50,6 +50,13 @@ interface GitDiffStat {
   binary: boolean;
 }
 
+interface GitWorktree {
+  path: string;
+  ref: string;
+  isMain: boolean;
+  isLocked: boolean;
+}
+
 interface GitError {
   message: string;
   exitCode?: number;
@@ -365,6 +372,106 @@ export async function createBranch(
     return {
       message: error instanceof Error ? error.message : String(error),
       command: "branch",
+    };
+  }
+}
+
+// ── listWorktrees ────────────────────────────────────────────────────
+
+export async function listWorktrees(
+  dirPath: string,
+): Promise<GitResult<GitWorktree[]>> {
+  try {
+    const git = simpleGit(dirPath);
+    const raw = await git.raw(["worktree", "list", "--porcelain"]);
+    const worktrees: GitWorktree[] = [];
+
+    let current: Partial<GitWorktree> | null = null;
+    for (const line of raw.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        if (current && current.path) {
+          worktrees.push({
+            path: current.path,
+            ref: current.ref ?? "",
+            isMain: current.isMain ?? false,
+            isLocked: current.isLocked ?? false,
+          });
+        }
+        current = { path: line.slice("worktree ".length) };
+      } else if (line.startsWith("branch ")) {
+        if (current) {
+          // branch refs/heads/feature/foo → feature/foo
+          const ref = line.slice("branch ".length);
+          current.ref = ref.replace(/^refs\/heads\//, "");
+        }
+      } else if (line.startsWith("HEAD ")) {
+        // detached HEAD — store the hash if no branch ref
+        if (current && !current.ref) {
+          current.ref = line.slice("HEAD ".length).slice(0, 7);
+        }
+      } else if (line === "bare") {
+        if (current) current.isMain = true;
+      } else if (line.startsWith("locked")) {
+        if (current) current.isLocked = true;
+      }
+    }
+    // Push the last entry
+    if (current && current.path) {
+      worktrees.push({
+        path: current.path,
+        ref: current.ref ?? "",
+        isMain: current.isMain ?? false,
+        isLocked: current.isLocked ?? false,
+      });
+    }
+
+    // Mark the first worktree as main (git always lists it first)
+    if (worktrees.length > 0) {
+      worktrees[0].isMain = true;
+    }
+
+    return ok(worktrees);
+  } catch (error) {
+    return fail("worktree list", error);
+  }
+}
+
+// ── createWorktree ───────────────────────────────────────────────────
+
+export async function createWorktree(
+  dirPath: string,
+  branch: string,
+  targetPath: string,
+): Promise<GitError | null> {
+  try {
+    const git = simpleGit(dirPath);
+    await git.raw(["worktree", "add", targetPath, branch]);
+    return null;
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      command: "worktree add",
+    };
+  }
+}
+
+// ── removeWorktree ───────────────────────────────────────────────────
+
+export async function removeWorktree(
+  dirPath: string,
+  worktreePath: string,
+  force = false,
+): Promise<GitError | null> {
+  try {
+    const git = simpleGit(dirPath);
+    const args = ["worktree", "remove", worktreePath];
+    if (force) args.push("--force");
+    await git.raw(args);
+    return null;
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      command: "worktree remove",
     };
   }
 }

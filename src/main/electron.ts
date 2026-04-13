@@ -292,6 +292,34 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle("git:listWorktrees", async (_event, dirPath: string) => {
+  return git.listWorktrees(dirPath);
+});
+
+ipcMain.handle(
+  "git:createWorktree",
+  async (
+    _event,
+    dirPath: string,
+    branch: string,
+    targetPath: string,
+  ) => {
+    return git.createWorktree(dirPath, branch, targetPath);
+  },
+);
+
+ipcMain.handle(
+  "git:removeWorktree",
+  async (
+    _event,
+    dirPath: string,
+    worktreePath: string,
+    force?: boolean,
+  ) => {
+    return git.removeWorktree(dirPath, worktreePath, force);
+  },
+);
+
 // ── IPC handlers for ACP operations ──────────────────────────────────
 
 ipcMain.handle("acp:listRegistry", async () => {

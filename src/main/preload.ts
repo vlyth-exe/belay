@@ -170,6 +170,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("git:checkout", dirPath, branch),
   gitCreateBranch: (dirPath: string, name: string, checkout?: boolean) =>
     ipcRenderer.invoke("git:createBranch", dirPath, name, checkout),
+  gitListWorktrees: (dirPath: string) =>
+    ipcRenderer.invoke("git:listWorktrees", dirPath),
+  gitCreateWorktree: (
+    dirPath: string,
+    branch: string,
+    targetPath: string,
+  ) => ipcRenderer.invoke("git:createWorktree", dirPath, branch, targetPath),
+  gitRemoveWorktree: (
+    dirPath: string,
+    worktreePath: string,
+    force?: boolean,
+  ) => ipcRenderer.invoke("git:removeWorktree", dirPath, worktreePath, force),
 
   // Terminal
   terminalSpawn: (
