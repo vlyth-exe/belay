@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Minus, Square, X, Globe, Settings } from "lucide-react";
+import { Minus, Square, X, Globe, Settings, GitBranch } from "lucide-react";
 import belayIcon from "/Belay.svg";
 
 import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
 import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useGitBranch } from "@/hooks/use-git-branch";
 
 /** The standard Windows "restore" icon — two overlapping offset rectangles. */
 function RestoreIcon({ className }: { className?: string }) {
@@ -25,7 +26,14 @@ function RestoreIcon({ className }: { className?: string }) {
   );
 }
 
-export function TitleBar() {
+export interface TitleBarProps {
+  /** Active session title to display in the center. */
+  sessionTitle?: string;
+  /** Project path used to look up the current git branch. */
+  projectPath?: string;
+}
+
+export function TitleBar({ sessionTitle, projectPath }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [showRegistry, setShowRegistry] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -85,8 +93,15 @@ export function TitleBar() {
         </button>
       </div>
 
-      {/* Spacer to push controls right */}
-      <div className="flex-1" />
+      {/* Centre — session title + git branch */}
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-4">
+        {sessionTitle && (
+          <span className="truncate text-[12px] text-muted-foreground/70">
+            {sessionTitle}
+          </span>
+        )}
+        <GitBranchDisplay projectPath={projectPath} />
+      </div>
 
       {/* Settings & theme toggle */}
       <div
@@ -156,5 +171,20 @@ export function TitleBar() {
         }}
       />
     </header>
+  );
+}
+
+// ── Git branch indicator ─────────────────────────────────────────────
+
+function GitBranchDisplay({ projectPath }: { projectPath?: string }) {
+  const { branch, isRepo } = useGitBranch(projectPath);
+
+  if (!isRepo || !branch) return null;
+
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground/40">
+      <GitBranch className="size-3" />
+      <span className="truncate">{branch}</span>
+    </span>
   );
 }
