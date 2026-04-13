@@ -189,6 +189,7 @@ function ensureSessions(project: SerializedProject): Project {
     ...s,
     createdAt: new Date(s.createdAt),
     agentId: s.agentId ?? null,
+    path: s.path ?? undefined,
   }));
   // Backward compat: projects loaded from storage before sessions existed
   if (sessions.length === 0) {
@@ -781,11 +782,19 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "SET_ACTIVE_PROJECT", projectId });
   }, []);
 
-  const addSession = useCallback((projectId: string): string => {
-    const session = makeDefaultSession();
-    dispatch({ type: "ADD_SESSION", projectId, session });
-    return session.id;
-  }, []);
+  const addSession = useCallback(
+    (projectId: string, overrides?: { title?: string; path?: string }): string => {
+      const base = makeDefaultSession();
+      const session: ChatSession = {
+        ...base,
+        title: overrides?.title ?? base.title,
+        path: overrides?.path,
+      };
+      dispatch({ type: "ADD_SESSION", projectId, session });
+      return session.id;
+    },
+    [],
+  );
 
   const removeSession = useCallback(
     (projectId: string, sessionId: string) => {

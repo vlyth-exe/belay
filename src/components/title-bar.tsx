@@ -174,7 +174,7 @@ export function TitleBar({ projectPath }: TitleBarProps) {
 function BranchDropdown({ projectPath }: { projectPath?: string }) {
   const { branch, isRepo, branches, worktrees, refresh } =
     useGitBranch(projectPath);
-  const { openProject } = useProjectStore();
+  const { addSession, activeProjectId } = useProjectStore();
   const [dropdownTab, setDropdownTab] = useState<"branches" | "worktrees">(
     "branches",
   );
@@ -217,8 +217,8 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
       name,
       target,
     );
-    if (!err) {
-      openProject(target);
+    if (!err && activeProjectId) {
+      addSession(activeProjectId, { title: name, path: target });
     }
     setNewBranchName("");
     setCreating(false);
@@ -230,11 +230,14 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
     const parent = parts.slice(0, -1).join("/");
     const slug = branchName.replace(/[^a-zA-Z0-9._-]/g, "-");
     const target = parent + "/" + slug;
-    await window.electronAPI?.gitCreateWorktree(
+    const err = await window.electronAPI?.gitCreateWorktree(
       projectPath!,
       branchName,
       target,
     );
+    if (!err && activeProjectId) {
+      addSession(activeProjectId, { title: branchName, path: target });
+    }
     refresh();
   };
 
@@ -383,7 +386,14 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                               ? "bg-muted text-foreground"
                               : "cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground",
                           ].join(" ")}
-                          onClick={() => !isCurrent && openProject(wt.path)}
+                          onClick={() =>
+                            !isCurrent &&
+                            activeProjectId &&
+                            addSession(activeProjectId, {
+                              title: wt.ref,
+                              path: wt.path,
+                            })
+                          }
                         >
                           <FolderTree className="size-3 shrink-0 text-muted-foreground/40" />
                           <div className="min-w-0 flex-1">

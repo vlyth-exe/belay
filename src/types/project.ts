@@ -15,6 +15,8 @@ export interface ChatSession {
   title: string;
   createdAt: Date;
   agentId: string | null;
+  /** Optional working directory override (e.g. for worktree sessions). */
+  path?: string;
 }
 
 export interface SessionGroup {

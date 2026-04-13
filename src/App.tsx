@@ -335,14 +335,16 @@ function AppLayout() {
   // ── Main layout ────────────────────────────────────────────────────
   const activeProject = openProjects.find((p) => p.id === activeProjectId);
   const activeSessionId = activeProject?.activeSessionId ?? null;
-
+  const activeSession = activeProject?.sessions.find(
+    (s) => s.id === activeSessionId,
+  );
 
   return (
     <div
       id="app-container"
       className="flex h-screen w-screen flex-col bg-background"
     >
-      <TitleBar projectPath={activeProject?.path} />
+      <TitleBar projectPath={activeSession?.path ?? activeProject?.path} />
       <div className="flex min-h-0 flex-1">
         <ProjectSidebar />
         {/* Chat area — render every session's chat; only the active one is visible */}
@@ -370,6 +372,8 @@ function AppLayout() {
                     }
                   : undefined;
 
+              const effectivePath = session.path ?? project.path;
+
               return (
                 <div
                   key={session.id}
@@ -380,7 +384,7 @@ function AppLayout() {
                     <Chat
                       sessionId={session.id}
                       projectId={project.id}
-                      projectPath={project.path}
+                      projectPath={effectivePath}
                       terminalOpen={isTerminalOpen}
                       onToggleTerminal={() =>
                         toggleTerminal(session.id, spawnOptions)
@@ -388,7 +392,7 @@ function AppLayout() {
                     />
                     {isTerminalOpen && (
                       <TerminalPanel
-                        projectPath={project.path}
+                        projectPath={effectivePath}
                         tabs={terminalData!.tabs}
                         activeTabId={terminalData!.activeTabId}
                         onSelectTab={(tabId) => selectTab(session.id, tabId)}
@@ -411,7 +415,7 @@ function AppLayout() {
                       onToggle={() => toggleSidebar(session.id)}
                       activeTab={sessionSidebarTab.get(session.id) ?? "explorer"}
                       onTabChange={(tab: string) => setSessionTab(session.id, tab)}
-                      projectPath={project.path}
+                      projectPath={effectivePath}
                       projectName={project.name}
                     />
                   )}
