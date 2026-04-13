@@ -8,36 +8,116 @@ import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
 import { MessageStoreProvider } from "@/stores/message-store";
 import { SessionStatusStoreProvider } from "@/stores/session-status-store";
 
+// ── Terminal tab types ──────────────────────────────────────────────
+
+export interface TerminalTab {
+  id: string;
+  label: string;
+}
+
+interface SessionTerminals {
+  tabs: TerminalTab[];
+  activeTabId: string;
+  nextLabel: number;
+}
+
+function createInitialTab(): { tab: TerminalTab; nextLabel: number } {
+  const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return { tab: { id: tabId, label: "Terminal 1" }, nextLabel: 2 };
+}
+
+function createNextTab(counter: number): {
+  tab: TerminalTab;
+  nextLabel: number;
+} {
+  const tabId = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return {
+    tab: { id: tabId, label: `Terminal ${counter}` },
+    nextLabel: counter + 1,
+  };
+}
+
 function AppLayout() {
   const { openProjects, activeProjectId, setActiveProject, setActiveSession } =
     useProjectStore();
 
-  // ── Terminal state: which sessions have an open terminal ──────────
-  const [openTerminals, setOpenTerminals] = useState<Set<string>>(new Set());
-  const openTerminalsRef = useRef<Set<string>>(new Set());
+  // ── Terminal state: multiple tabs per session ─────────────────────
+  const [sessionTerminals, setSessionTerminals] = useState<
+    Map<string, SessionTerminals>
+  >(new Map());
+  const sessionTerminalsRef = useRef<Map<string, SessionTerminals>>(new Map());
 
+  const syncRef = (next: Map<string, SessionTerminals>) => {
+    sessionTerminalsRef.current = next;
+    return next;
+  };
+
+  /** Toggle terminal panel for a session. If panel is closed, open with
+   *  one tab. If panel is already open, add a new tab. */
   const toggleTerminal = useCallback((sessionId: string) => {
-    setOpenTerminals((prev) => {
-      const next = new Set(prev);
-      if (next.has(sessionId)) {
-        next.delete(sessionId);
-        window.electronAPI?.terminalKill(sessionId);
+    setSessionTerminals((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(sessionId);
+
+      if (!existing || existing.tabs.length === 0) {
+        // Open panel with first tab
+        const { tab, nextLabel } = createInitialTab();
+        next.set(sessionId, {
+          tabs: [tab],
+          activeTabId: tab.id,
+          nextLabel,
+        });
       } else {
-        next.add(sessionId);
+        // Add a new tab and make it active
+        const { tab, nextLabel } = createNextTab(existing.nextLabel);
+        next.set(sessionId, {
+          tabs: [...existing.tabs, tab],
+          activeTabId: tab.id,
+          nextLabel,
+        });
       }
-      openTerminalsRef.current = next;
-      return next;
+
+      return syncRef(next);
     });
   }, []);
 
-  const closeTerminal = useCallback((sessionId: string) => {
-    setOpenTerminals((prev) => {
-      if (!prev.has(sessionId)) return prev;
-      const next = new Set(prev);
-      next.delete(sessionId);
-      window.electronAPI?.terminalKill(sessionId);
-      openTerminalsRef.current = next;
-      return next;
+  /** Close a specific terminal tab. Removes the panel if it was the last tab. */
+  const closeTab = useCallback((sessionId: string, tabId: string) => {
+    setSessionTerminals((prev) => {
+      const existing = prev.get(sessionId);
+      if (!existing) return prev;
+
+      window.electronAPI?.terminalKill(tabId);
+
+      const newTabs = existing.tabs.filter((t) => t.id !== tabId);
+
+      if (newTabs.length === 0) {
+        const next = new Map(prev);
+        next.delete(sessionId);
+        return syncRef(next);
+      }
+
+      const newActiveId =
+        existing.activeTabId === tabId ? newTabs[0].id : existing.activeTabId;
+
+      const next = new Map(prev);
+      next.set(sessionId, {
+        ...existing,
+        tabs: newTabs,
+        activeTabId: newActiveId,
+      });
+      return syncRef(next);
+    });
+  }, []);
+
+  /** Switch the active terminal tab. */
+  const selectTab = useCallback((sessionId: string, tabId: string) => {
+    setSessionTerminals((prev) => {
+      const existing = prev.get(sessionId);
+      if (!existing || existing.activeTabId === tabId) return prev;
+      const next = new Map(prev);
+      next.set(sessionId, { ...existing, activeTabId: tabId });
+      return syncRef(next);
     });
   }, []);
 
@@ -46,17 +126,19 @@ function AppLayout() {
     const currentSessionIds = new Set(
       openProjects.flatMap((p) => p.sessions.map((s) => s.id)),
     );
-    const stale = [...openTerminalsRef.current].filter(
-      (id) => !currentSessionIds.has(id),
-    );
-    if (stale.length === 0) return;
-    const next = new Set(openTerminalsRef.current);
-    stale.forEach((id) => {
-      next.delete(id);
-      window.electronAPI?.terminalKill(id);
-    });
-    openTerminalsRef.current = next;
-    setOpenTerminals(next);
+    let changed = false;
+    const next = new Map(sessionTerminalsRef.current);
+    for (const [sessionId, data] of next) {
+      if (!currentSessionIds.has(sessionId)) {
+        data.tabs.forEach((t) => window.electronAPI?.terminalKill(t.id));
+        next.delete(sessionId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      sessionTerminalsRef.current = next;
+      setSessionTerminals(next);
+    }
   }, [openProjects]);
 
   // ── Notification click handler: navigate to the relevant session ──
@@ -103,7 +185,9 @@ function AppLayout() {
               const isActive =
                 session.id === activeSessionId &&
                 project.id === activeProjectId;
-              const isTerminalOpen = openTerminals.has(session.id);
+              const terminalData = sessionTerminals.get(session.id);
+              const isTerminalOpen =
+                !!terminalData && terminalData.tabs.length > 0;
 
               return (
                 <div
@@ -119,12 +203,16 @@ function AppLayout() {
                     terminalOpen={isTerminalOpen}
                     onToggleTerminal={() => toggleTerminal(session.id)}
                   />
-                  <TerminalPanel
-                    sessionId={session.id}
-                    projectPath={project.path}
-                    isOpen={isTerminalOpen}
-                    onClose={() => closeTerminal(session.id)}
-                  />
+                  {isTerminalOpen && (
+                    <TerminalPanel
+                      projectPath={project.path}
+                      tabs={terminalData!.tabs}
+                      activeTabId={terminalData!.activeTabId}
+                      onSelectTab={(tabId) => selectTab(session.id, tabId)}
+                      onAddTab={() => toggleTerminal(session.id)}
+                      onCloseTab={(tabId) => closeTab(session.id, tabId)}
+                    />
+                  )}
                 </div>
               );
             }),
