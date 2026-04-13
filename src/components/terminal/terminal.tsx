@@ -336,7 +336,7 @@ export function TerminalView({
     };
   }, [id, cwd, spawnOptions]);
 
-  return <div ref={containerRef} className="h-full w-full p-2" />;
+  return <div ref={containerRef} className="h-full w-full" />;
 }
 
 export default TerminalView;

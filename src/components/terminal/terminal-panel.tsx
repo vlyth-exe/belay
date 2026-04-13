@@ -119,7 +119,9 @@ export function TerminalPanel({
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            className={tab.id === activeTabId ? "absolute inset-0" : "hidden"}
+            className={
+              tab.id === activeTabId ? "absolute inset-0 p-2" : "hidden p-2"
+            }
           >
             <TerminalView
               id={tab.id}
