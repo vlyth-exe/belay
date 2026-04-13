@@ -359,7 +359,8 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                       </label>
                     </div>
                   ) : (
-                    <Menu.Item
+                    <button
+                      type="button"
                       className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] text-muted-foreground/50 outline-none transition-colors hover:bg-muted hover:text-foreground"
                       onClick={() => {
                         setShowCreate(true);
@@ -368,7 +369,7 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                     >
                       <Plus className="size-3 shrink-0" />
                       <span>Create Branch</span>
-                    </Menu.Item>
+                    </button>
                   )}
                 </>
               )}
