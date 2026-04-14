@@ -1146,11 +1146,10 @@ export function Chat({
               modes={availableModes}
               onModeSelect={handleModeSelect}
               controls={
-                <div className="flex items-center gap-2">
+                <>
                   {agentSelector}
                   {modeSelector}
-                  <div className="flex-1" />
-                </div>
+                </>
               }
             />
           </div>
@@ -1226,11 +1225,10 @@ export function Chat({
             modes={availableModes}
             onModeSelect={handleModeSelect}
             controls={
-              <div className="flex items-center gap-2">
+              <>
                 {agentSelector}
                 {modeSelector}
-                <div className="flex-1" />
-              </div>
+              </>
             }
           />
         </div>

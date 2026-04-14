@@ -345,7 +345,7 @@ export function ChatInput({
 
         {/* ── Input row ──────────────────────────────────────────── */}
         <div className="rounded-lg border border-border/60 bg-muted/30 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/20">
-          <div className="flex items-end gap-2 px-3 pt-2 pb-2">
+          <div className="px-3 pt-2 pb-2">
             <textarea
               ref={textareaRef}
               value={value}
@@ -355,23 +355,24 @@ export function ChatInput({
               disabled={disabled}
               placeholder={dynamicPlaceholder}
               rows={1}
-              className="max-h-50 min-h-6 flex-1 resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+              className="max-h-50 min-h-6 w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
             />
-            <Button
-              size="icon-sm"
-              onClick={send}
-              disabled={!canSend}
-              aria-label="Send message"
-              className="shrink-0 rounded-lg"
-            >
-              <ArrowUp className="size-4" strokeWidth={2.5} />
-            </Button>
           </div>
-          {controls && (
-            <div className="border-t border-border/40 px-3 py-1.5">
+          <div className="border-t border-border/40 px-3 py-1.5">
+            <div className="flex items-center gap-2">
               {controls}
+              <div className="flex-1" />
+              <Button
+                size="icon-sm"
+                onClick={send}
+                disabled={!canSend}
+                aria-label="Send message"
+                className="shrink-0 rounded-lg"
+              >
+                <ArrowUp className="size-4" strokeWidth={2.5} />
+              </Button>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
