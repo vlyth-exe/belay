@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/belay-codes/belay/compare/belay-v0.3.1...belay-v0.3.2) (2026-04-14)
+
+
+### Bug Fixes
+
+* **ci:** trigger build from release-please workflow instead of workflow_run ([ac4f3aa](https://github.com/belay-codes/belay/commit/ac4f3aaa581192f72a43acf48b466378615e58fc))
+
 ## [0.3.1](https://github.com/belay-codes/belay/compare/belay-v0.3.0...belay-v0.3.1) (2026-04-14)
 
 
