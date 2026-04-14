@@ -1,3 +1,23 @@
+# Release Please Workflow
+#
+# This workflow automates versioning and changelog generation using
+# googleapis/release-please-action@v4.
+#
+# IMPORTANT: The default GITHUB_TOKEN must have write permissions for this
+# workflow to create release pull requests. If the workflow fails with:
+#   "GitHub Actions is not permitted to create or approve pull requests."
+# then an organization admin must update the repository settings:
+#
+#   1. Go to the repository on GitHub
+#   2. Navigate to Settings > Actions > General
+#   3. Under "Workflow permissions", select "Read and write permissions"
+#   4. Optionally check "Allow GitHub Actions to create and approve pull requests"
+#   5. Save the changes
+#
+# If the organization restricts this setting at the org level, an org admin
+# must allow write permissions for this repository's workflow token under:
+#   Organization Settings > Actions > General > Workflow permissions
+
 name: Release Please
 
 on:
@@ -12,8 +32,12 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: googleapis/release-please-action@v4
         with:
-          release-type: node
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
