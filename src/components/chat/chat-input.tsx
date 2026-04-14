@@ -358,7 +358,7 @@ export function ChatInput({
               className="max-h-50 min-h-6 w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
             />
           </div>
-          <div className="border-t border-border/40 px-3 py-1.5">
+          <div className="px-3 py-1.5">
             <div className="flex items-center gap-2">
               {controls}
               <div className="flex-1" />
