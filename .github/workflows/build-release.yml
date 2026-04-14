@@ -65,6 +65,8 @@ jobs:
   publish-npm:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +92,5 @@ jobs:
           "
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --provenance --access public
         working-directory: packages/belay-code
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
