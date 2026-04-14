@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/belay-codes/belay/compare/belay-v0.3.2...belay-v0.3.3) (2026-04-14)
+
+
+### Bug Fixes
+
+* **ci:** checkout repo before gh workflow run ([3f96cc2](https://github.com/belay-codes/belay/commit/3f96cc269dab7082dd6b694b85be9b9ebe9c51b9))
+
 ## [0.3.2](https://github.com/belay-codes/belay/compare/belay-v0.3.1...belay-v0.3.2) (2026-04-14)
 
 
