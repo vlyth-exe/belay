@@ -1169,8 +1169,9 @@ export function Chat({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Message list */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      {/* Message list with fade overlay */}
+      <div className="relative flex-1 min-h-0">
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 py-6">
           <div className="space-y-4">
             {messages.map((message) => (
@@ -1210,10 +1211,11 @@ export function Chat({
             )}
           </div>
         </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted/30" />
       </div>
 
-      {/* Gradient fade + prompt box pinned to bottom */}
-      <div className="pointer-events-none h-8 shrink-0 bg-gradient-to-b from-transparent to-muted/30" />
+      {/* Prompt box pinned to bottom */}
       <div className="bg-muted/30 px-4 pb-3">
         <div className="mx-auto max-w-4xl">
           <ChatInput
