@@ -365,24 +365,6 @@ function AppLayout() {
                     const isActive =
                       session.id === activeSessionId &&
                       project.id === activeProjectId;
-                    const terminalData = sessionTerminals.get(session.id);
-                    const isTerminalOpen =
-                      !!terminalData && terminalData.tabs.length > 0;
-
-                    // Detect WSL from the session's active agent harness.
-                    // Spawn options are captured at tab-creation time so that
-                    // switching agents later doesn't disrupt a running terminal.
-                    const agentHarness = session.agentId
-                      ? harnesses.find((h) => h.agentId === session.agentId)
-                      : undefined;
-                    const spawnOptions: SpawnOptions | undefined =
-                      agentHarness?.useWsl
-                        ? {
-                            isWsl: true,
-                            wslDistro: agentHarness.wslDistro || undefined,
-                          }
-                        : undefined;
-
                     const effectivePath = session.path ?? project.path;
 
                     return (
