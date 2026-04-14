@@ -253,7 +253,7 @@ export function TerminalPanel({
     >
       {/* Drag handle */}
       <div
-        className="group relative flex h-1 shrink-0 cursor-row-resize items-center justify-center hover:bg-muted/50"
+        className="group relative flex h-1 shrink-0 cursor-row-resize items-center justify-center"
         onMouseDown={handleDragStart}
       >
         <div className="h-0.75 w-8 rounded-full bg-border transition-colors group-hover:bg-foreground/30" />
