@@ -214,19 +214,15 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Sync package version to release tag
-        if: steps.ref.outputs.ref != 'main'
+      - name: Sync npm package version from root package.json
         run: |
-          # Strip leading 'v' or 'belay-v' from the tag to get a semver version
-          TAG="${{ steps.ref.outputs.ref }}"
-          VERSION="${TAG#belay-v}"
-          VERSION="${VERSION#v}"
-          echo "Setting belay-app version to $VERSION"
           node -e "
             const fs = require('fs');
+            const root = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             const pkg = JSON.parse(fs.readFileSync('packages/belay-code/package.json', 'utf8'));
-            pkg.version = '${VERSION}';
+            pkg.version = root.version;
             fs.writeFileSync('packages/belay-code/package.json', JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Synced belay-app version to', root.version);
           "
 
       - name: Publish to npm
