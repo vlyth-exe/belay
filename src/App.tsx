@@ -359,7 +359,7 @@ function AppLayout() {
           <div className="flex-1 overflow-hidden p-1 pt-0 pb-3">
             <div className="flex h-full flex-col">
               {/* Chat area — rounded container */}
-              <div className="relative flex-1 min-h-0 rounded-xl bg-muted/30 overflow-hidden">
+              <div className="relative flex-1 min-h-0 rounded-xl bg-muted overflow-hidden">
                 {openProjects.map((project) =>
                   project.sessions.map((session) => {
                     const isActive =
