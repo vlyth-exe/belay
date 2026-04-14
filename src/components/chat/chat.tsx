@@ -1024,7 +1024,7 @@ export function Chat({
         <button
           type="button"
           onClick={() => setModeSelectorOpen(!modeSelectorOpen)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
         >
           <Zap className="size-3" />
           <span className="max-w-[100px] truncate">
@@ -1073,7 +1073,7 @@ export function Chat({
           if (!agentSelectorOpen) refreshHarnesses();
           setAgentSelectorOpen(!agentSelectorOpen);
         }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
       >
         <Cpu className="size-3" />
         {agentId && connectionState === "ready" && selectedHarness ? (
