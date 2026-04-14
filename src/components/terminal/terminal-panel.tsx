@@ -246,7 +246,7 @@ export function TerminalPanel({
   return (
     <div
       className={cn(
-        "flex flex-col bg-background",
+        "flex flex-col bg-background animate-in slide-in-from-bottom duration-200",
         isDragging && "select-none",
       )}
       style={{ height: `${height}px` }}
