@@ -37,17 +37,40 @@ jobs:
     steps:
       - name: Resolve release tag
         id: tag
+        shell: node {0}
         run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG=$(gh release list --limit 1 --json tagName --jq '.[].tagName')
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          const assert = require('assert');
+          const https = require('https');
+          const fs = require('fs');
+
+          const releaseTag = '${{ github.event.release.tag_name }}';
+          const inputTag = '${{ inputs.tag }}';
+
+          if (releaseTag) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${releaseTag}\n`);
+            console.log(`tag=${releaseTag} (from release event)`);
+            return;
+          }
+
+          if (inputTag) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${inputTag}\n`);
+            console.log(`tag=${inputTag} (from workflow_dispatch input)`);
+            return;
+          }
+
+          // workflow_run — fetch the latest release tag from the GitHub API
+          const url = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=1`;
+          https.get(url, { headers: { 'User-Agent': 'actions', Authorization: `token ${process.env.GITHUB_TOKEN}` } }, (res) => {
+            let body = '';
+            res.on('data', (c) => (body += c));
+            res.on('end', () => {
+              const releases = JSON.parse(body);
+              assert(Array.isArray(releases) && releases.length > 0, 'No releases found');
+              const tag = releases[0].tag_name;
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
+              console.log(`tag=${tag} (from GitHub API)`);
+            });
+          });
 
       - uses: actions/checkout@v4
         with:
@@ -102,17 +125,37 @@ jobs:
     steps:
       - name: Resolve release tag
         id: tag
+        shell: node {0}
         run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG=$(gh release list --limit 1 --json tagName --jq '.[].tagName')
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          const https = require('https');
+          const fs = require('fs');
+
+          const releaseTag = '${{ github.event.release.tag_name }}';
+          const inputTag = '${{ inputs.tag }}';
+
+          if (releaseTag) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${releaseTag}\n`);
+            console.log(`tag=${releaseTag} (from release event)`);
+            return;
+          }
+
+          if (inputTag) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${inputTag}\n`);
+            console.log(`tag=${inputTag} (from workflow_dispatch input)`);
+            return;
+          }
+
+          const url = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=1`;
+          https.get(url, { headers: { 'User-Agent': 'actions', Authorization: `token ${process.env.GITHUB_TOKEN}` } }, (res) => {
+            let body = '';
+            res.on('data', (c) => (body += c));
+            res.on('end', () => {
+              const releases = JSON.parse(body);
+              const tag = releases[0].tag_name;
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
+              console.log(`tag=${tag} (from GitHub API)`);
+            });
+          });
 
       - uses: actions/checkout@v4
         with:

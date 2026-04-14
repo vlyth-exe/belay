@@ -231,6 +231,24 @@ export interface ElectronAPI {
     id: string,
     callback: (exitCode: number) => void,
   ) => () => void;
+
+  // Auto-updater
+  updaterSetMode: (mode: "auto" | "manual") => void;
+  updaterCheckForUpdates: () => Promise<void>;
+  updaterDownloadUpdate: () => Promise<void>;
+  updaterQuitAndInstall: () => Promise<void>;
+  updaterOnStatus: (
+    callback: (
+      status:
+        | { state: "idle" }
+        | { state: "checking" }
+        | { state: "available"; version: string; breaking: boolean; releaseNotes?: string }
+        | { state: "not-available" }
+        | { state: "downloading"; progress: { percent: number } }
+        | { state: "downloaded"; version: string }
+        | { state: "error"; message: string },
+    ) => void,
+  ) => () => void;
 }
 
 declare global {
