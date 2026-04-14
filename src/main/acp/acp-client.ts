@@ -1,4 +1,5 @@
 import { ChildProcess, spawn, execSync } from "node:child_process";
+import { app } from "electron";
 import { ClientSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import type {
   Client,
@@ -299,7 +300,7 @@ export class AcpClient {
           clientInfo: {
             name: "belay",
             title: "Belay",
-            version: "0.1.0",
+            version: app.getVersion(),
           },
         }),
         exitDuringInit,
