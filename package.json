@@ -1,9 +1,12 @@
 {
   "name": "belay",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Belay – a multi-session AI coding IDE",
-  "author": { "name": "Belay Contributors", "email": "belay@belay.codes" },
+  "author": {
+    "name": "Belay Contributors",
+    "email": "belay@belay.codes"
+  },
   "main": "dist/main/electron.js",
   "scripts": {
     "dev": "vite",

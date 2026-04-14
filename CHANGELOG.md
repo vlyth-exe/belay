@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.1](https://github.com/belay-codes/belay/compare/belay-v0.3.0...belay-v0.3.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* **ci:** add author email for Linux .deb package requirement ([185bd14](https://github.com/belay-codes/belay/commit/185bd14a2e2104f2d3eb190e4a3ae26a8aa3b302))
+* **ci:** add NPM_TOKEN auth for npm publish ([2aeadea](https://github.com/belay-codes/belay/commit/2aeadea8c2fd59faaf173ccc830c70a2076dd40d))
+* **ci:** add workflow_run trigger to fix bot-created releases not triggering builds ([f919014](https://github.com/belay-codes/belay/commit/f9190141bf12d0cdb390cb7f751dbd6bf29615b5))
+* **ci:** configure proper npm trusted publishing ([626957f](https://github.com/belay-codes/belay/commit/626957f6d2ec037b3df9ccab38a9c23c28cc78c5))
+* **ci:** cross-platform tag resolution and add updater types ([b724945](https://github.com/belay-codes/belay/commit/b724945108bed2d231b9933fa642563a6c29b44b))
+* **ci:** resolve ref lookup for all trigger types ([8d15f45](https://github.com/belay-codes/belay/commit/8d15f4550f28b53db0bec3aa02a916c76a116fe1))
+* **ci:** skip version sync when building from main ([5f7c0c7](https://github.com/belay-codes/belay/commit/5f7c0c7feb5c85b0c705f1b17c321799d7ed67ba))
+* **ci:** sync npm package version from root package.json ([a3a1e51](https://github.com/belay-codes/belay/commit/a3a1e513f5ddaf1ccc89c77ef75dd71d82538447))
+* **ci:** upgrade npm to &gt;= 11.5.1 for trusted publishing OIDC support ([b54f0e8](https://github.com/belay-codes/belay/commit/b54f0e8d00562f0790a5acfa5442a98f192a5dff))
+* **ci:** use Node 24 for npm publish (ships with npm 11.x for trusted publishing) ([9441de3](https://github.com/belay-codes/belay/commit/9441de3ad7a1d872a4dbe1bf1a07f1b86a2c9b0d))
+* resolve TypeScript errors blocking CI build ([fc3b29b](https://github.com/belay-codes/belay/commit/fc3b29bb65ba367ac29330ceabc2803d84c119d2))
+
 ## [0.3.0](https://github.com/belay-codes/belay/compare/belay-v0.2.0...belay-v0.3.0) (2026-04-14)
 
 
