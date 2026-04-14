@@ -1145,12 +1145,14 @@ export function Chat({
               slashCommands={slashCommands}
               modes={availableModes}
               onModeSelect={handleModeSelect}
+              controls={
+                <div className="flex items-center gap-2">
+                  {agentSelector}
+                  {modeSelector}
+                  <div className="flex-1" />
+                </div>
+              }
             />
-            <div className="mt-2 flex items-center gap-2">
-              {agentSelector}
-              {modeSelector}
-              <div className="flex-1" />
-            </div>
           </div>
         </div>
 
@@ -1223,12 +1225,14 @@ export function Chat({
             slashCommands={slashCommands}
             modes={availableModes}
             onModeSelect={handleModeSelect}
+            controls={
+              <div className="flex items-center gap-2">
+                {agentSelector}
+                {modeSelector}
+                <div className="flex-1" />
+              </div>
+            }
           />
-          <div className="mt-2 flex items-center gap-2">
-            {agentSelector}
-            {modeSelector}
-            <div className="flex-1" />
-          </div>
         </div>
       </div>
 
