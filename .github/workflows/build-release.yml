@@ -215,6 +215,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Sync package version to release tag
+        if: steps.ref.outputs.ref != 'main'
         run: |
           # Strip leading 'v' or 'belay-v' from the tag to get a semver version
           TAG="${{ steps.ref.outputs.ref }}"
