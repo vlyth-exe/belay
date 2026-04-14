@@ -246,7 +246,7 @@ export function TerminalPanel({
   return (
     <div
       className={cn(
-        "flex flex-col border-t border-border bg-background",
+        "flex flex-col bg-background",
         isDragging && "select-none",
       )}
       style={{ height: `${height}px` }}
