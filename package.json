@@ -25,6 +25,42 @@
     ],
     "icon": "public/Belay.ico",
     "forceCodeSigning": false,
+    "publish": {
+      "provider": "github",
+      "owner": "belay-codes",
+      "repo": "belay"
+    },
+    "mac": {
+      "icon": "public/Belay.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "public/Belay.png",
+      "category": "Development",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
     "win": {
       "target": [
         {

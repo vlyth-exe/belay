@@ -1,0 +1,63 @@
+name: Build Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest
+          - os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Generate macOS icon
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p Belay.iconset
+          sips -z 16 16     public/Belay.png --out Belay.iconset/icon_16x16.png
+          sips -z 32 32     public/Belay.png --out Belay.iconset/icon_16x16@2x.png
+          sips -z 32 32     public/Belay.png --out Belay.iconset/icon_32x32.png
+          sips -z 64 64     public/Belay.png --out Belay.iconset/icon_32x32@2x.png
+          sips -z 128 128   public/Belay.png --out Belay.iconset/icon_128x128.png
+          sips -z 256 256   public/Belay.png --out Belay.iconset/icon_128x128@2x.png
+          sips -z 256 256   public/Belay.png --out Belay.iconset/icon_256x256.png
+          sips -z 512 512   public/Belay.png --out Belay.iconset/icon_256x256@2x.png
+          sips -z 512 512   public/Belay.png --out Belay.iconset/icon_512x512.png
+          sips -z 1024 1024 public/Belay.png --out Belay.iconset/icon_512x512@2x.png
+          iconutil -c icns Belay.iconset -o public/Belay.icns
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
