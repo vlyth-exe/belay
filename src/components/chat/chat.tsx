@@ -1075,7 +1075,11 @@ export function Chat({
         }}
         className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
       >
-        <Cpu className="size-3" />
+        {selectedHarness?.icon ? (
+          <img src={selectedHarness.icon} alt="" className="size-3 rounded-sm dark:invert" />
+        ) : (
+          <Cpu className="size-3" />
+        )}
         {agentId && connectionState === "ready" && selectedHarness ? (
           <span className="max-w-[140px] truncate font-medium">
             {selectedHarness.name}
@@ -1114,6 +1118,11 @@ export function Chat({
                       : "text-muted-foreground hover:text-foreground",
                   ].join(" ")}
                 >
+                  {harness.icon ? (
+                    <img src={harness.icon} alt="" className="size-4 shrink-0 rounded-sm dark:invert" />
+                  ) : (
+                    <Cpu className="size-4 shrink-0" />
+                  )}
                   {harness.name}
                   <span className="text-[10px] opacity-50">
                     v{harness.version}
