@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/belay-codes/belay/compare/belay-v0.2.0...belay-v0.3.0) (2026-04-14)
+
+
+### Features
+
+* auto-update system with cross-platform builds and npm installer ([#14](https://github.com/belay-codes/belay/issues/14)) ([5413c95](https://github.com/belay-codes/belay/commit/5413c958db13180127eca2a71c3729cc4201530c))
+* **ci:** auto-publish belay-code to npm on release ([e267f96](https://github.com/belay-codes/belay/commit/e267f96b81a5636068a9780f96ae934a2f20a441))
+
+
+### Bug Fixes
+
+* **ci:** use npm Trusted Publishing with OIDC instead of NPM_TOKEN ([836637b](https://github.com/belay-codes/belay/commit/836637b89a7f7e89072628b6d57d5b7b8e98e9d1))
+* force LF line endings in npm package scripts ([7cd5c64](https://github.com/belay-codes/belay/commit/7cd5c647fb405c559681c14a63bee4713bef827d))
+
+
+### Code Refactoring
+
+* rename npm package from belay-code to belay-app ([c2cdcef](https://github.com/belay-codes/belay/commit/c2cdcefcf248415969e44a891fe9aaf7e9137bd7))
+
 ## [0.2.0](https://github.com/belay-codes/belay/compare/belay-v0.1.0...belay-v0.2.0) (2026-04-14)
 
 
