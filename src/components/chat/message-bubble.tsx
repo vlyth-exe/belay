@@ -1,20 +1,88 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Pencil, Copy, Check, X, ArrowUp, GitBranch } from "lucide-react";
+import {
+  Pencil,
+  Copy,
+  Check,
+  X,
+  ArrowUp,
+  GitBranch,
+  Shield,
+  CheckCheck,
+} from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCallDisplay } from "./tool-call-display";
+import { Button } from "@/components/ui/button";
 import { renderMarkdown } from "./markdown";
-import type { Message, MessageBlock, ToolCallInfo } from "./types";
+import type {
+  Message,
+  MessageBlock,
+  ToolCallInfo,
+  PermissionRequestInfo,
+} from "./types";
 
 export type { Message, MessageBlock, ToolCallInfo };
+
+// ── Permission block renderer ─────────────────────────────────────────
+
+function PermissionBlockRenderer({
+  permission,
+  onRespond,
+}: {
+  permission: PermissionRequestInfo;
+  onRespond: (requestId: string, optionId: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Shield className="size-3.5 shrink-0 text-amber-600" />
+        <span className="text-[13px] font-medium">
+          {permission.toolCall?.title ?? "Permission Request"}
+        </span>
+      </div>
+
+      {/* Reason */}
+      {permission.reason && (
+        <div className="border-t border-amber-500/15 px-3 py-2">
+          <p className="text-[13px] leading-relaxed text-muted-foreground">
+            {permission.reason}
+          </p>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex items-center justify-end gap-1.5 border-t border-amber-500/15 px-3 py-2">
+        {permission.options.map((option) => {
+          const isReject = option.kind.startsWith("reject");
+          const isAlways = option.kind === "allow_always";
+          const Icon = isAlways ? CheckCheck : isReject ? X : Check;
+          return (
+            <Button
+              key={option.id}
+              variant={isReject ? "outline" : "default"}
+              size="xs"
+              onClick={() => onRespond(permission.requestId, option.id)}
+            >
+              <Icon className="size-3" />
+              {option.name}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ── Block renderer ────────────────────────────────────────────────────
 
 function BlockRenderer({
   block,
   isStreaming,
+  onPermissionRespond,
 }: {
   block: MessageBlock;
   isStreaming?: boolean;
+  onPermissionRespond?: (requestId: string, optionId: string) => void;
 }) {
   switch (block.type) {
     case "thinking":
@@ -32,6 +100,15 @@ function BlockRenderer({
 
     case "tool_call":
       return <ToolCallDisplay toolCall={block.toolCall} />;
+
+    case "permission_request":
+      if (!onPermissionRespond) return null;
+      return (
+        <PermissionBlockRenderer
+          permission={block.permission}
+          onRespond={onPermissionRespond}
+        />
+      );
   }
 }
 
@@ -49,6 +126,8 @@ interface MessageBubbleProps {
   onEditSubmit?: (messageId: string, newContent: string) => void;
   /** Called when the user cancels an inline edit (Escape or Cancel button). */
   onEditCancel?: () => void;
+  /** Called when the user responds to a permission request. */
+  onPermissionRespond?: (requestId: string, optionId: string) => void;
 }
 
 export function MessageBubble({
@@ -58,6 +137,7 @@ export function MessageBubble({
   isEditing = false,
   onEditSubmit,
   onEditCancel,
+  onPermissionRespond,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [isHovered, setIsHovered] = useState(false);
@@ -305,6 +385,7 @@ export function MessageBubble({
               message.isStreaming &&
               block.id === message.blocks[message.blocks.length - 1]?.id
             }
+            onPermissionRespond={onPermissionRespond}
           />
         ))}
       </div>

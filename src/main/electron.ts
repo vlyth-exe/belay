@@ -1,6 +1,12 @@
-import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import type { NativeImage } from "electron";
+
+// ICO is the native Windows icon format — much more reliable for the
+// taskbar than PNG, especially with frameless windows.
+const iconFilename = process.platform === "win32" ? "Belay.ico" : "Belay.png";
+
 import { connectionManager } from "./acp/connection-manager.js";
 import { terminalManager } from "./terminal.js";
 import {
@@ -22,10 +28,10 @@ import * as git from "./git.js";
 // as the notification source and groups the taskbar icon correctly.
 app.setAppUserModelId("Belay");
 
-// Determine icon path based on whether app is packaged
-const iconPath = !app.isPackaged
-  ? path.join(__dirname, "..", "..", "public", "Belay.png")
-  : path.join(__dirname, "..", "renderer", "Belay.png");
+
+
+// Pre-loaded after app.whenReady(); shared across window + notifications.
+let appIcon: NativeImage | null = null;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -43,7 +49,7 @@ function createWindow(): void {
 
     backgroundColor: "#0a0a0a",
 
-    icon: iconPath,
+    icon: appIcon ?? undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
 
@@ -80,6 +86,14 @@ function createWindow(): void {
   // Set the main window for the terminal manager
   terminalManager.setMainWindow(mainWindow);
 }
+
+// ── App info ────────────────────────────────────────────────────────
+
+ipcMain.handle("app:version", () => {
+  const version = app.getVersion();
+  const major = parseInt(version.split(".")[0], 10);
+  return major === 0 ? `${version}α` : version;
+});
 
 // ── IPC handlers for window controls ──────────────────────────────────
 
@@ -121,7 +135,7 @@ ipcMain.on(
     const windowObscured =
       !mainWindow || mainWindow.isMinimized() || !mainWindow.isFocused();
     if (!sessionVisible || windowObscured) {
-      const notification = new Notification({ title, body, icon: iconPath });
+      const notification = new Notification({ title, body, icon: appIcon ?? undefined });
       notification.on("click", () => {
         // Restore and focus the window
         if (mainWindow) {
@@ -465,6 +479,23 @@ function broadcastMaximizeState(): void {
 }
 
 app.whenReady().then(() => {
+  // Load the icon after app is ready for maximum reliability,
+  // especially on Windows where the taskbar needs a native ICO.
+  const iconPath = !app.isPackaged
+    ? path.join(__dirname, "..", "..", "public", iconFilename)
+    : path.join(__dirname, "..", "renderer", iconFilename);
+
+  try {
+    if (fs.existsSync(iconPath)) {
+      appIcon = nativeImage.createFromPath(iconPath);
+      console.log(`[Electron] Icon loaded: ${appIcon.getSize().width}x${appIcon.getSize().height} from ${iconPath}`);
+    } else {
+      console.warn(`[Electron] Icon file not found: ${iconPath}`);
+    }
+  } catch (err) {
+    console.error(`[Electron] Failed to load icon:`, err);
+  }
+
   createWindow();
 
   // Attach maximize listeners after window is created

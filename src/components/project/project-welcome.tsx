@@ -33,7 +33,7 @@ export function ProjectWelcome({ onProjectOpened }: ProjectWelcomeProps) {
       {/* Logo & tagline */}
       <div className="flex flex-col items-center gap-4">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
-          <img src={belayIcon} alt="Belay" className="size-10" />
+          <img src={belayIcon} alt="Belay" className="size-10 dark:invert" />
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">

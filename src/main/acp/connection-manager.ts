@@ -106,10 +106,28 @@ class ConnectionManager {
         // Store in global permission index for routing
         this.permissionIndex.set(requestId, agentId);
 
+        // Extract reason text from tool call content blocks (type: "content" → text)
+        const reason = Array.isArray(request.toolCall?.content)
+          ? (request.toolCall.content as Record<string, unknown>[])
+              .filter((c) => c.type === "content")
+              .map((c) => c.content as Record<string, unknown> | undefined)
+              .filter((cb): cb is Record<string, unknown> => cb?.type === "text")
+              .map((cb) => cb.text as string)
+              .join("\n") || undefined
+          : undefined;
+
         this.mainWindow?.webContents.send("acp:onPermissionRequest", {
           requestId,
           sessionId: request.sessionId,
           options: request.options,
+          reason,
+          toolCall: request.toolCall
+            ? {
+                toolCallId: request.toolCall.toolCallId,
+                title: request.toolCall.title ?? undefined,
+                kind: request.toolCall.kind ?? undefined,
+              }
+            : undefined,
         });
       });
     };

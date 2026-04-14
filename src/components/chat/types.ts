@@ -35,11 +35,35 @@ export interface ToolCallMessageBlock {
   toolCall: ToolCallInfo;
 }
 
+export interface PermissionOption {
+  id: string;
+  name: string;
+  kind: "allow_once" | "allow_always" | "reject_once" | "reject_always";
+}
+
+export interface PermissionRequestInfo {
+  requestId: string;
+  reason?: string;
+  toolCall?: {
+    toolCallId: string;
+    title?: string;
+    kind?: string;
+  };
+  options: PermissionOption[];
+}
+
+export interface PermissionRequestMessageBlock {
+  id: string;
+  type: "permission_request";
+  permission: PermissionRequestInfo;
+}
+
 /** A single sequential block within a message. */
 export type MessageBlock =
   | ThinkingMessageBlock
   | TextMessageBlock
-  | ToolCallMessageBlock;
+  | ToolCallMessageBlock
+  | PermissionRequestMessageBlock;
 
 // ── Message ────────────────────────────────────────────────────────────
 

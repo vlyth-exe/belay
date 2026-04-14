@@ -11,11 +11,14 @@ import {
   Trash2,
   Loader2,
   Circle,
+  Search,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 import { useSessionStatusRead } from "@/stores/session-status-store";
 import { GroupDialog } from "./group-dialog";
+import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
 import type { Project } from "@/types/project";
 
 // ── Persisted expanded state ─────────────────────────────────────────
@@ -88,6 +91,12 @@ function findGroupForSession(project: Project, sessionId: string) {
 
 export function ProjectSidebar() {
   const [isOpening, setIsOpening] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.electronAPI?.appVersion().then(setAppVersion).catch(() => {});
+  }, []);
   const [expandedProjects, setExpandedProjects] =
     useState<Set<string>>(loadExpanded);
 
@@ -107,6 +116,7 @@ export function ProjectSidebar() {
     null,
   );
   const [groupDialogKey, setGroupDialogKey] = useState(0);
+  const [showRegistry, setShowRegistry] = useState(false);
 
   // Inline rename state for sessions
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
@@ -919,26 +929,48 @@ export function ProjectSidebar() {
 
   // ── Main render ──────────────────────────────────────────────────
 
+  const query = searchQuery.toLowerCase().trim();
+  const filteredProjects = query
+    ? openProjects.filter(
+        (p) =>
+          p.name.toLowerCase().includes(query) ||
+          p.path.toLowerCase().includes(query) ||
+          p.sessions.some((s) => s.title.toLowerCase().includes(query)),
+      )
+    : openProjects;
+
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-background/50">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-        <MessageSquare className="size-3.5 text-muted-foreground" />
-        <span className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-          Projects
-        </span>
-        <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
-          {openProjects.length}
-        </span>
+    <aside className="flex h-full w-64 shrink-0 flex-col">
+
+
+      <div className="px-2 pt-1 pb-1.5">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search projects…"
+            className="h-7 w-full rounded-md border border-border/50 bg-muted/30 pl-6 pr-6 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-border"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Project list */}
       <div className="flex-1 overflow-y-auto py-1">
-        {openProjects.length === 0 ? (
+        {filteredProjects.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
             <FolderOpen className="size-5 text-muted-foreground/40" />
             <p className="text-[11px] text-muted-foreground/60">
-              No projects open
+              {query ? "No matching projects" : "No projects open"}
             </p>
           </div>
         ) : (
@@ -949,9 +981,9 @@ export function ProjectSidebar() {
             onDrop={handleProjectListDrop}
             onDragEnd={handleDragEnd}
           >
-            {openProjects.map((project) => {
+            {filteredProjects.map((project) => {
               const isActive = project.id === activeProjectId;
-              const isExpanded = expandedProjects.has(project.id);
+              const isExpanded = query ? true : expandedProjects.has(project.id);
               const canCollapse = !(isActive && project.activeSessionId);
               const isDragging =
                 dragInfoRef.current?.kind === "project" &&
@@ -1065,7 +1097,7 @@ export function ProjectSidebar() {
                   {/* ── Session sub-items ── */}
                   {isExpanded && (
                     <div
-                      className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2"
+                      className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/40 pl-2"
                       onDragStart={(e) =>
                         handleSessionListDragStart(e, project.id)
                       }
@@ -1319,19 +1351,16 @@ export function ProjectSidebar() {
       </div>
 
       {/* Open project button */}
-      <div className="border-t border-border p-2">
+      <div className="p-2">
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={handleOpenDirectory}
           disabled={isOpening}
-          className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+          className="w-full justify-center gap-2 text-muted-foreground hover:text-foreground"
         >
           {isOpening ? (
-            <>
-              <Clock className="size-3.5 animate-spin" />
-              <span className="text-[12px]">Opening…</span>
-            </>
+            <span className="text-[12px]">Opening…</span>
           ) : (
             <>
               <Plus className="size-3.5" />
@@ -1339,6 +1368,11 @@ export function ProjectSidebar() {
             </>
           )}
         </Button>
+        {appVersion && (
+          <p className="mt-1 text-center text-[10px] text-muted-foreground/30">
+            v{appVersion}
+          </p>
+        )}
       </div>
 
       {/* Context menu (rendered as portal-like fixed overlay) */}
@@ -1354,6 +1388,11 @@ export function ProjectSidebar() {
         initialName={groupDialog?.initialName ?? ""}
         initialColor={groupDialog?.initialColor ?? "#3b82f6"}
         submitLabel={groupDialog?.mode === "edit" ? "Save" : "Create"}
+      />
+
+      <HarnessRegistryDialog
+        open={showRegistry}
+        onClose={() => setShowRegistry(false)}
       />
     </aside>
   );

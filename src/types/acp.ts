@@ -100,14 +100,21 @@ export interface AcpToolCallUpdate {
 export interface AcpPermissionRequest {
   requestId: string;
   sessionId: string;
-  description: string;
   options: AcpPermissionOption[];
+  reason?: string;
+  toolCall?: AcpPermissionToolCall;
 }
 
 export interface AcpPermissionOption {
   id: string;
-  label: string;
-  kind: "allow" | "deny" | "always_allow";
+  name: string;
+  kind: "allow_once" | "allow_always" | "reject_once" | "reject_always";
+}
+
+export interface AcpPermissionToolCall {
+  toolCallId: string;
+  title?: string;
+  kind?: string;
 }
 
 /** Plan update from an agent */

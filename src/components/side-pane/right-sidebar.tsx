@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   FolderTree,
   GitBranch,
+  Terminal,
 } from "lucide-react";
 import { FileExplorer } from "@/components/file-explorer/file-explorer";
 import { GitPanel } from "@/components/git/git-panel";
@@ -36,6 +37,10 @@ export interface RightSidebarProps {
   projectPath?: string;
   /** Project display name for the header. */
   projectName?: string;
+  /** Whether the terminal panel is currently open. */
+  terminalOpen?: boolean;
+  /** Callback to toggle the terminal panel open/closed. */
+  onToggleTerminal?: () => void;
 }
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -52,6 +57,8 @@ export function RightSidebar({
   onTabChange,
   projectPath,
   projectName,
+  terminalOpen = false,
+  onToggleTerminal,
 }: RightSidebarProps) {
   const [internalTab, setInternalTab] = useState<SidebarTab>("explorer");
   const activeTab = controlledTab ?? internalTab;
@@ -74,75 +81,94 @@ export function RightSidebar({
 
   return (
     <div
-      className="flex h-full shrink-0 border-l border-border/40 transition-[width] duration-200 ease-in-out"
+      className="flex h-full shrink-0 flex-col transition-[width] duration-200 ease-in-out"
       style={{ width: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH }}
     >
-      {/* ── Icon rail ── */}
-      <div className="flex shrink-0 flex-col items-center border-r border-border/40 pt-2" style={{ width: COLLAPSED_WIDTH }}>
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
+      <div className="flex min-h-0 flex-1">
+        <div className="flex shrink-0 flex-col items-center justify-end pb-2" style={{ width: COLLAPSED_WIDTH }}>
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTabClick(tab.id)}
+                className={[
+                  "group relative flex size-8 items-center justify-center rounded-md transition-colors",
+                  isActive
+                    ? "text-foreground"
+                    : "text-muted-foreground/40 hover:text-muted-foreground/70",
+                  isOpen && isActive ? "bg-muted/60" : "hover:bg-muted/30",
+                ].join(" ")}
+                aria-label={tab.label}
+                title={tab.label}
+              >
+                <Icon className="size-4" />
+                {!isOpen && (
+                  <span className="pointer-events-none absolute left-full ml-2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100" style={{ zIndex: 50 }}>
+                    {tab.label}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {onToggleTerminal && (
             <button
-              key={tab.id}
               type="button"
-              onClick={() => handleTabClick(tab.id)}
+              onClick={onToggleTerminal}
               className={[
                 "group relative flex size-8 items-center justify-center rounded-md transition-colors",
-                isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground/40 hover:text-muted-foreground/70",
-                isOpen && isActive ? "bg-muted/60" : "hover:bg-muted/30",
+                terminalOpen
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-muted/30",
               ].join(" ")}
-              aria-label={tab.label}
-              title={tab.label}
+              aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
+              title={terminalOpen ? "Close terminal" : "Open terminal"}
             >
-              <Icon className="size-4" />
-              {/* Tooltip label for collapsed state */}
+              <Terminal className="size-4" />
               {!isOpen && (
                 <span className="pointer-events-none absolute left-full ml-2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100" style={{ zIndex: 50 }}>
-                  {tab.label}
+                  Terminal
                 </span>
               )}
             </button>
-          );
-        })}
-      </div>
+          )}
+        </div>
 
-      {/* ── Content panel ── */}
-      <div
-        className={[
-          "flex min-w-0 flex-1 flex-col overflow-hidden",
-          isOpen
-            ? "opacity-100"
-            : "pointer-events-none w-0 opacity-0",
-          "transition-opacity duration-200",
-        ].join(" ")}
-      >
-        {/* ── Tab content ── */}
-        <div className="flex-1 overflow-hidden">
-          {activeTab === "explorer" && projectPath && (
-            <FileExplorer rootPath={projectPath} rootLabel={projectName} />
-          )}
-          {activeTab === "explorer" && !projectPath && (
-            <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
-              <FolderTree className="size-5 text-muted-foreground/30" />
-              <p className="text-[11px] text-muted-foreground/50">
-                No project path available
-              </p>
-            </div>
-          )}
-          {activeTab === "git" && projectPath && (
-            <GitPanel projectPath={projectPath} />
-          )}
-          {activeTab === "git" && !projectPath && (
-            <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
-              <GitBranch className="size-5 text-muted-foreground/30" />
-              <p className="text-[11px] text-muted-foreground/50">
-                No project path available
-              </p>
-            </div>
-          )}
+        <div
+          className={[
+            "flex min-w-0 flex-1 flex-col overflow-hidden",
+            isOpen
+              ? "opacity-100 pr-3"
+              : "pointer-events-none w-0 opacity-0",
+            "transition-opacity duration-200",
+          ].join(" ")}
+        >
+          <div className="flex-1 overflow-hidden">
+            {activeTab === "explorer" && projectPath && (
+              <FileExplorer rootPath={projectPath} rootLabel={projectName} />
+            )}
+            {activeTab === "explorer" && !projectPath && (
+              <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                <FolderTree className="size-5 text-muted-foreground/30" />
+                <p className="text-[11px] text-muted-foreground/50">
+                  No project path available
+                </p>
+              </div>
+            )}
+            {activeTab === "git" && projectPath && (
+              <GitPanel projectPath={projectPath} />
+            )}
+            {activeTab === "git" && !projectPath && (
+              <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                <GitBranch className="size-5 text-muted-foreground/30" />
+                <p className="text-[11px] text-muted-foreground/50">
+                  No project path available
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

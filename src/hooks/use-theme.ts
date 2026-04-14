@@ -195,6 +195,12 @@ export function useTheme() {
     if (activeClass) {
       root.classList.add(activeClass);
     }
+
+    // Invert favicon on dark themes
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (favicon) {
+      favicon.style.filter = resolvedDark ? "invert(1)" : "";
+    }
   }, [resolvedDark, activeClass]);
 
   const setTheme = useCallback((next: ThemeId) => {

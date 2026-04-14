@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { ChevronDown, Cpu, Terminal, Zap } from "lucide-react";
+import { ChevronDown, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
-import { PermissionDialog } from "./permission-dialog";
-import type { Message, MessageBlock, ToolCallInfo } from "./types";
+import type { Message, MessageBlock, ToolCallInfo, PermissionRequestInfo } from "./types";
+import type { AcpPermissionRequest } from "@/types/acp";
 import type { AcpAvailableCommand, AcpSessionMode } from "@/types/acp";
 
 import {
@@ -144,16 +144,12 @@ interface ChatProps {
   sessionId: string;
   projectId: string;
   projectPath?: string;
-  terminalOpen?: boolean;
-  onToggleTerminal?: () => void;
 }
 
 export function Chat({
   sessionId,
   projectId,
   projectPath,
-  terminalOpen = false,
-  onToggleTerminal,
 }: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
   const { messages, setMessages, saveMessages, isLoaded } =
@@ -219,12 +215,8 @@ export function Chat({
     () => cached?.currentModeId ?? null,
   );
 
-  const [permissionRequest, setPermissionRequest] = useState<{
-    requestId: string;
-    sessionId: string;
-    description: string;
-    options: Array<{ id: string; label: string; kind: string }>;
-  } | null>(null);
+  // Active permission request ID — used to track which block to clean up on respond
+  const activePermissionRequestId = useRef<string | null>(null);
 
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
@@ -360,21 +352,77 @@ export function Chat({
   }, [connectionState]);
 
   // ── Listen for permission requests (filtered by acpSessionId) ────
+  // Injects an inline permission_request block into the streaming
+  // assistant message and fires a native OS notification so the user
+  // is alerted even when the window is in the background.
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
-    const unsubscribe = api.acpOnPermissionRequest?.((request: unknown) => {
-      if (!request) return;
-      const req = request as NonNullable<typeof permissionRequest>;
+    const unsubscribe = api.acpOnPermissionRequest?.((raw: unknown) => {
+      if (!raw) return;
+      const req = raw as AcpPermissionRequest;
       // Only show permission UI for OUR session (use ref for same reason as streaming listener)
       const currentAcpSessionId = acpSessionIdRef.current;
       if (!currentAcpSessionId || req.sessionId !== currentAcpSessionId) return;
-      setPermissionRequest(req);
+
+      const permInfo: PermissionRequestInfo = {
+        requestId: req.requestId,
+        reason: req.reason,
+        toolCall: req.toolCall
+          ? {
+              toolCallId: req.toolCall.toolCallId,
+              title: req.toolCall.title,
+              kind: req.toolCall.kind,
+            }
+          : undefined,
+        options: req.options.map((o) => ({
+          id: o.id,
+          name: o.name,
+          kind: o.kind,
+        })),
+      };
+
+      activePermissionRequestId.current = permInfo.requestId;
+
+      // Inject a permission_request block into the current streaming message
+      const mid = streamingMessageId.current;
+      if (mid) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== mid) return msg;
+            // Avoid duplicates
+            if (msg.blocks.some((b) => b.type === "permission_request" && b.permission.requestId === req.requestId)) return msg;
+            return {
+              ...msg,
+              blocks: [
+                ...msg.blocks,
+                {
+                  id: crypto.randomUUID(),
+                  type: "permission_request" as const,
+                  permission: permInfo,
+                },
+              ],
+            };
+          }),
+        );
+      }
+
+      // Send native notification so the user is alerted even when unfocused
+      const title = req.toolCall?.title ?? "Permission Request";
+      if (getNotificationsEnabled()) {
+        window.electronAPI?.notificationSend(
+          "Belay",
+          `Agent requests permission: ${title}`,
+          isSessionActive,
+          projectId,
+          sessionId,
+        );
+      }
     });
     return () => {
       unsubscribe?.();
     };
-  }, [acpSessionId]);
+  }, [acpSessionId, isSessionActive, projectId, sessionId, setMessages]);
 
   // ── Process streaming updates (filtered by acpSessionId) ─────────
   // Instead of accumulating updates in state and re-iterating in an
@@ -670,9 +718,20 @@ export function Chat({
   const handlePermissionRespond = useCallback(
     (requestId: string, optionId: string) => {
       window.electronAPI?.acpRespondPermission(requestId, optionId);
-      setPermissionRequest(null);
+      activePermissionRequestId.current = null;
+
+      // Remove the permission_request block from messages
+      setMessages((prev) =>
+        prev.map((msg) => ({
+          ...msg,
+          blocks: msg.blocks.filter(
+            (b) =>
+              !(b.type === "permission_request" && b.permission.requestId === requestId),
+          ),
+        })),
+      );
     },
-    [],
+    [setMessages],
   );
 
   // ── Handle mode selection from @ autocomplete ───────────────────
@@ -1028,7 +1087,7 @@ export function Chat({
         <button
           type="button"
           onClick={() => setModeSelectorOpen(!modeSelectorOpen)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
         >
           <Zap className="size-3" />
           <span className="max-w-[100px] truncate">
@@ -1077,9 +1136,13 @@ export function Chat({
           if (!agentSelectorOpen) refreshHarnesses();
           setAgentSelectorOpen(!agentSelectorOpen);
         }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
       >
-        <Cpu className="size-3" />
+        {selectedHarness?.icon ? (
+          <img src={selectedHarness.icon} alt="" className="size-3 rounded-sm dark:invert" />
+        ) : (
+          <Cpu className="size-3" />
+        )}
         {agentId && connectionState === "ready" && selectedHarness ? (
           <span className="max-w-[140px] truncate font-medium">
             {selectedHarness.name}
@@ -1118,6 +1181,11 @@ export function Chat({
                       : "text-muted-foreground hover:text-foreground",
                   ].join(" ")}
                 >
+                  {harness.icon ? (
+                    <img src={harness.icon} alt="" className="size-4 shrink-0 rounded-sm dark:invert" />
+                  ) : (
+                    <Cpu className="size-4 shrink-0" />
+                  )}
                   {harness.name}
                   <span className="text-[10px] opacity-50">
                     v{harness.version}
@@ -1138,29 +1206,8 @@ export function Chat({
         <div className="flex-1" />
 
         {/* Agent selector + input pinned to bottom */}
-        <div className="border-t border-border/40 px-4 pt-2 pb-3">
+        <div className="bg-muted px-4 pb-3">
           <div className="mx-auto max-w-4xl">
-            <div className="mb-2 flex items-center gap-2">
-              {agentSelector}
-              {modeSelector}
-              <div className="flex-1" />
-              {onToggleTerminal && (
-                <button
-                  type="button"
-                  onClick={onToggleTerminal}
-                  className={[
-                    "inline-flex size-7 items-center justify-center rounded-md transition-colors",
-                    terminalOpen
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  ].join(" ")}
-                  aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
-                  title={terminalOpen ? "Close terminal" : "Open terminal"}
-                >
-                  <Terminal className="size-3.5" />
-                </button>
-              )}
-            </div>
             <ChatInput
               onSend={handleSend}
               disabled={!agentId || isThinking}
@@ -1170,15 +1217,15 @@ export function Chat({
               slashCommands={slashCommands}
               modes={availableModes}
               onModeSelect={handleModeSelect}
+              controls={
+                <>
+                  {agentSelector}
+                  {modeSelector}
+                </>
+              }
             />
           </div>
         </div>
-
-        {/* Dialogs */}
-        <PermissionDialog
-          request={permissionRequest}
-          onRespond={handlePermissionRespond}
-        />
       </div>
     );
   }
@@ -1188,8 +1235,9 @@ export function Chat({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Message list */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      {/* Message list with fade overlay */}
+      <div className="relative flex-1 min-h-0">
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 py-6">
           <div className="space-y-4">
             {messages.map((message) => (
@@ -1203,6 +1251,9 @@ export function Chat({
                   message.role === "user" ? handleEditSubmit : undefined
                 }
                 onEditCancel={handleCancelEdit}
+                onPermissionRespond={
+                  message.role === "assistant" ? handlePermissionRespond : undefined
+                }
               />
             ))}
 
@@ -1229,32 +1280,13 @@ export function Chat({
             )}
           </div>
         </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted" />
       </div>
 
-      {/* Agent selector + input pinned to bottom */}
-      <div className="border-t border-border/40 px-4 pt-2 pb-3">
+      {/* Prompt box pinned to bottom */}
+      <div className="bg-muted px-4 pb-3">
         <div className="mx-auto max-w-4xl">
-          <div className="mb-2 flex items-center gap-2">
-            {agentSelector}
-            {modeSelector}
-            <div className="flex-1" />
-            {onToggleTerminal && (
-              <button
-                type="button"
-                onClick={onToggleTerminal}
-                className={[
-                  "inline-flex size-7 items-center justify-center rounded-md transition-colors",
-                  terminalOpen
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                ].join(" ")}
-                aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
-                title={terminalOpen ? "Close terminal" : "Open terminal"}
-              >
-                <Terminal className="size-3.5" />
-              </button>
-            )}
-          </div>
           <ChatInput
             onSend={handleSend}
             disabled={!agentId || isThinking}
@@ -1264,15 +1296,15 @@ export function Chat({
             slashCommands={slashCommands}
             modes={availableModes}
             onModeSelect={handleModeSelect}
+            controls={
+              <>
+                {agentSelector}
+                {modeSelector}
+              </>
+            }
           />
         </div>
       </div>
-
-      {/* Dialogs */}
-      <PermissionDialog
-        request={permissionRequest}
-        onRespond={handlePermissionRespond}
-      />
     </div>
   );
 }

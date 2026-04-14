@@ -8,6 +8,8 @@ import {
   Circle,
   ArrowUpDown,
   Download,
+  SquarePlus,
+  SquareMinus,
 } from "lucide-react";
 import { useGitStatus } from "@/hooks/use-git";
 
@@ -272,9 +274,10 @@ export function GitPanel({ projectPath }: GitPanelProps) {
           <button
             type="button"
             onClick={allStaged ? handleUnstageAll : handleStageAll}
-            className="rounded-md px-2 py-0.5 text-[10px] font-medium text-muted-foreground/50 transition-colors hover:bg-muted/50 hover:text-foreground"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/40 transition-colors hover:bg-muted/50 hover:text-foreground"
+            title={allStaged ? "Unstage All" : "Stage All"}
           >
-            {allStaged ? "Unstage All" : "Stage All"}
+            {allStaged ? <SquareMinus className="size-3.5" /> : <SquarePlus className="size-3.5" />}
           </button>
         )}
         <button
