@@ -1,0 +1,4 @@
+# Bin scripts must use LF line endings so npm recognises the shebang
+# on Windows (CRLF causes "script name was invalid" on publish).
+packages/belay-code/bin/* text eol=lf
+packages/belay-code/scripts/* text eol=lf
