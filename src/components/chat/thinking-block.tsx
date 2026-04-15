@@ -4,8 +4,7 @@ import { renderMarkdown } from "./markdown";
 
 // ── Time formatting ──────────────────────────────────────────────────
 
-function formatElapsed(start: Date, end?: Date): string {
-  const ms = (end ?? new Date()).getTime() - start.getTime();
+function formatElapsed(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
@@ -13,6 +12,34 @@ function formatElapsed(start: Date, end?: Date): string {
   const remaining = Math.floor(seconds % 60);
   return `${minutes}m ${remaining}s`;
 }
+
+// ── Live elapsed hook ────────────────────────────────────────────────
+
+/**
+ * Returns the elapsed time in ms between `start` and `end` (or now).
+ * Re-renders every second while `active` is true to keep the display ticking.
+ */
+function useLiveElapsed(
+  start: Date | undefined,
+  end: Date | undefined,
+  active: boolean,
+): number | undefined {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!active || !start) return;
+
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, [active, start]);
+
+  if (!start) return undefined;
+  const endTime = end ?? now;
+  return endTime.getTime() - start.getTime();
+}
+
+// ── Component ────────────────────────────────────────────────────────
 
 interface ThinkingBlockProps {
   /** The accumulated thinking content */
@@ -35,9 +62,13 @@ export function ThinkingBlock({
   const [prevIsStreaming, setPrevIsStreaming] = useState(isStreaming);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const isActive = isStreaming && !!startedAt && !completedAt;
+
+  const elapsed = useLiveElapsed(startedAt, completedAt, isActive);
+
   // Synchronize expanded state with streaming transitions during render.
   // This is the recommended React pattern for "adjusting state when a prop changes"
-  // — see https://react.dev/learn/you-might-not-need-an-effect#adjusting-state-when-a-prop-changes
+  // — see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
   if (isStreaming !== prevIsStreaming) {
     setPrevIsStreaming(isStreaming);
     if (isStreaming) {
@@ -83,14 +114,10 @@ export function ThinkingBlock({
         ) : (
           <span className="text-muted-foreground">Thoughts</span>
         )}
-        {startedAt && (
+        {elapsed != null && (
           <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/60">
             <Clock className="size-2.5" />
-            {isStreaming
-              ? formatElapsed(startedAt)
-              : completedAt
-                ? formatElapsed(startedAt, completedAt)
-                : formatElapsed(startedAt)}
+            {formatElapsed(elapsed)}
           </span>
         )}
       </button>
