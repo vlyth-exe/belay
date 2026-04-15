@@ -13,6 +13,8 @@ export interface ToolCallInfo {
   status: "pending" | "in_progress" | "completed" | "failed";
   arguments?: string;
   output?: string;
+  startedAt?: Date;
+  completedAt?: Date;
 }
 
 // ── Message blocks ─────────────────────────────────────────────────────
@@ -21,6 +23,8 @@ export interface ThinkingMessageBlock {
   id: string;
   type: "thinking";
   content: string;
+  startedAt?: Date;
+  completedAt?: Date;
 }
 
 export interface TextMessageBlock {
@@ -75,4 +79,6 @@ export interface Message {
   timestamp: Date;
   /** True while the agent is still producing blocks for this message. */
   isStreaming?: boolean;
+  /** When the response finished streaming. */
+  completedAt?: Date;
 }

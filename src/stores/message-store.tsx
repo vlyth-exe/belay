@@ -12,30 +12,68 @@ import type { Message, MessageBlock } from "@/components/chat/types";
 
 // ── Serialization helpers ────────────────────────────────────────────
 
+/** Serialize a single block's date fields to ISO strings. */
+function serializeBlock(block: MessageBlock): Record<string, unknown> {
+  const base: Record<string, unknown> = { ...block };
+  if ("startedAt" in block && block.startedAt instanceof Date) {
+    base.startedAt = block.startedAt.toISOString();
+  }
+  if ("completedAt" in block && block.completedAt instanceof Date) {
+    base.completedAt = block.completedAt.toISOString();
+  }
+  return base;
+}
+
 /** Convert a Message to a plain object suitable for JSON / IPC. */
 function serializeMessage(msg: Message): Record<string, unknown> {
   return {
     id: msg.id,
     role: msg.role,
-    blocks: msg.blocks,
+    blocks: msg.blocks.map(serializeBlock),
     timestamp:
       msg.timestamp instanceof Date
         ? msg.timestamp.toISOString()
         : String(msg.timestamp),
+    ...(msg.completedAt
+      ? {
+          completedAt:
+            msg.completedAt instanceof Date
+              ? msg.completedAt.toISOString()
+              : String(msg.completedAt),
+        }
+      : {}),
     // isStreaming is intentionally omitted — never persisted
   };
 }
 
+/** Deserialize a single block's date fields from ISO strings. */
+function deserializeBlock(raw: Record<string, unknown>): MessageBlock {
+  const block = { ...raw } as Record<string, unknown>;
+  if (typeof block.startedAt === "string") {
+    block.startedAt = new Date(block.startedAt);
+  }
+  if (typeof block.completedAt === "string") {
+    block.completedAt = new Date(block.completedAt);
+  }
+  return block as unknown as MessageBlock;
+}
+
 /** Convert a plain object (from IPC / JSON) back to a Message. */
 function deserializeMessage(raw: Record<string, unknown>): Message {
+  const rawBlocks = (raw.blocks ?? []) as Array<Record<string, unknown>>;
   return {
     id: raw.id as string,
     role: raw.role as "user" | "assistant",
-    blocks: (raw.blocks as MessageBlock[]) ?? [],
+    blocks: rawBlocks.map(deserializeBlock),
     timestamp:
       raw.timestamp instanceof Date
         ? raw.timestamp
         : new Date(raw.timestamp as string),
+    completedAt: raw.completedAt
+      ? raw.completedAt instanceof Date
+        ? raw.completedAt
+        : new Date(raw.completedAt as string)
+      : undefined,
     // isStreaming is absent — defaults to undefined / falsy
   };
 }

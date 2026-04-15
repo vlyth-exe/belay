@@ -2,7 +2,13 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { ChevronDown, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
-import type { Message, MessageBlock, ToolCallInfo, PermissionRequestInfo } from "./types";
+import type {
+  Message,
+  MessageBlock,
+  ThinkingMessageBlock,
+  ToolCallInfo,
+  PermissionRequestInfo,
+} from "./types";
 import type { AcpPermissionRequest } from "@/types/acp";
 import type { AcpAvailableCommand, AcpSessionMode } from "@/types/acp";
 
@@ -49,7 +55,34 @@ function appendOrCreateBlock(
   if (last && last.type === type) {
     return [...blocks.slice(0, -1), { ...last, content: last.content + text }];
   }
-  return [...blocks, { id: crypto.randomUUID(), type, content: text }];
+
+  const now = new Date();
+  let result = blocks;
+
+  // If the last block was thinking and we're switching to a different type,
+  // mark the thinking block as completed.
+  if (
+    last &&
+    last.type === "thinking" &&
+    type !== "thinking" &&
+    "startedAt" in last &&
+    !("completedAt" in last && last.completedAt)
+  ) {
+    result = [
+      ...blocks.slice(0, -1),
+      { ...last, completedAt: now } as ThinkingMessageBlock,
+    ];
+  }
+
+  return [
+    ...result,
+    {
+      id: crypto.randomUUID(),
+      type,
+      content: text,
+      ...(type === "thinking" ? { startedAt: now } : {}),
+    },
+  ];
 }
 
 /** Insert or update a tool_call block matched by toolCallId. */
@@ -64,9 +97,18 @@ function upsertToolCallBlock(
   if (idx >= 0) {
     const block = blocks[idx];
     if (block.type === "tool_call") {
+      const isTerminal =
+        update.status === "completed" || update.status === "failed";
+      const completedAt =
+        isTerminal && !block.toolCall.completedAt
+          ? { completedAt: new Date() }
+          : {};
       return [
         ...blocks.slice(0, idx),
-        { ...block, toolCall: { ...block.toolCall, ...update } },
+        {
+          ...block,
+          toolCall: { ...block.toolCall, ...update, ...completedAt },
+        },
         ...blocks.slice(idx + 1),
       ];
     }
@@ -81,6 +123,7 @@ function upsertToolCallBlock(
       toolCall: {
         name: "unknown",
         status: "pending" as const,
+        startedAt: new Date(),
         ...update,
       },
     },
@@ -146,11 +189,7 @@ interface ChatProps {
   projectPath?: string;
 }
 
-export function Chat({
-  sessionId,
-  projectId,
-  projectPath,
-}: ChatProps) {
+export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
   const { messages, setMessages, saveMessages, isLoaded } =
     useSessionMessages(sessionId);
@@ -391,7 +430,14 @@ export function Chat({
           prev.map((msg) => {
             if (msg.id !== mid) return msg;
             // Avoid duplicates
-            if (msg.blocks.some((b) => b.type === "permission_request" && b.permission.requestId === req.requestId)) return msg;
+            if (
+              msg.blocks.some(
+                (b) =>
+                  b.type === "permission_request" &&
+                  b.permission.requestId === req.requestId,
+              )
+            )
+              return msg;
             return {
               ...msg,
               blocks: [
@@ -726,7 +772,10 @@ export function Chat({
           ...msg,
           blocks: msg.blocks.filter(
             (b) =>
-              !(b.type === "permission_request" && b.permission.requestId === requestId),
+              !(
+                b.type === "permission_request" &&
+                b.permission.requestId === requestId
+              ),
           ),
         })),
       );
@@ -863,11 +912,24 @@ export function Chat({
           // Send prompt (resolves when agent finishes)
           await sendPrompt(agentId!, sid, trimmed);
 
-          // Mark the message as no longer streaming
+          // Mark the message as no longer streaming and finalize timing
+          const completedAt = new Date();
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantId ? { ...msg, isStreaming: false } : msg,
-            ),
+            prev.map((msg) => {
+              if (msg.id !== assistantId) return msg;
+              // Finalize any thinking blocks that are still open
+              const finalizedBlocks = msg.blocks.map((b) =>
+                b.type === "thinking" && b.startedAt && !b.completedAt
+                  ? { ...b, completedAt }
+                  : b,
+              );
+              return {
+                ...msg,
+                isStreaming: false,
+                completedAt,
+                blocks: finalizedBlocks,
+              };
+            }),
           );
 
           // Persist completed exchange to disk
@@ -881,20 +943,32 @@ export function Chat({
                 const hasText = msg.blocks.some(
                   (b) => b.type === "text" && b.content.length > 0,
                 );
+                const now = new Date();
+                // Finalize any thinking blocks that are still open
+                const finalizedBlocks = hasText
+                  ? msg.blocks.map((b) =>
+                      b.type === "thinking" && b.startedAt && !b.completedAt
+                        ? { ...b, completedAt: now }
+                        : b,
+                    )
+                  : [
+                      ...msg.blocks.map((b) =>
+                        b.type === "thinking" && b.startedAt && !b.completedAt
+                          ? { ...b, completedAt: now }
+                          : b,
+                      ),
+                      {
+                        id: crypto.randomUUID(),
+                        type: "text" as const,
+                        content:
+                          "Sorry, something went wrong while communicating with the agent.",
+                      },
+                    ];
                 return {
                   ...msg,
                   isStreaming: false,
-                  blocks: hasText
-                    ? msg.blocks
-                    : [
-                        ...msg.blocks,
-                        {
-                          id: crypto.randomUUID(),
-                          type: "text" as const,
-                          content:
-                            "Sorry, something went wrong while communicating with the agent.",
-                        },
-                      ],
+                  completedAt: now,
+                  blocks: finalizedBlocks,
                 };
               }),
             );
@@ -1139,7 +1213,11 @@ export function Chat({
         className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
       >
         {selectedHarness?.icon ? (
-          <img src={selectedHarness.icon} alt="" className="size-3 rounded-sm dark:invert" />
+          <img
+            src={selectedHarness.icon}
+            alt=""
+            className="size-3 rounded-sm dark:invert"
+          />
         ) : (
           <Cpu className="size-3" />
         )}
@@ -1182,7 +1260,11 @@ export function Chat({
                   ].join(" ")}
                 >
                   {harness.icon ? (
-                    <img src={harness.icon} alt="" className="size-4 shrink-0 rounded-sm dark:invert" />
+                    <img
+                      src={harness.icon}
+                      alt=""
+                      className="size-4 shrink-0 rounded-sm dark:invert"
+                    />
                   ) : (
                     <Cpu className="size-4 shrink-0" />
                   )}
@@ -1238,48 +1320,50 @@ export function Chat({
       {/* Message list with fade overlay */}
       <div className="relative flex-1 min-h-0">
         <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
-        <div className="mx-auto max-w-4xl px-4 py-6">
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isEditing={editingMessageId === message.id}
-                onEdit={message.role === "user" ? handleStartEdit : undefined}
-                onBranch={message.role === "user" ? handleBranch : undefined}
-                onEditSubmit={
-                  message.role === "user" ? handleEditSubmit : undefined
-                }
-                onEditCancel={handleCancelEdit}
-                onPermissionRespond={
-                  message.role === "assistant" ? handlePermissionRespond : undefined
-                }
-              />
-            ))}
+          <div className="mx-auto max-w-4xl px-4 py-6">
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  isEditing={editingMessageId === message.id}
+                  onEdit={message.role === "user" ? handleStartEdit : undefined}
+                  onBranch={message.role === "user" ? handleBranch : undefined}
+                  onEditSubmit={
+                    message.role === "user" ? handleEditSubmit : undefined
+                  }
+                  onEditCancel={handleCancelEdit}
+                  onPermissionRespond={
+                    message.role === "assistant"
+                      ? handlePermissionRespond
+                      : undefined
+                  }
+                />
+              ))}
 
-            {/* Typing indicator (only when not streaming via ACP) */}
-            {isThinking && !isStreaming && (
-              <div className="flex items-center gap-1 px-1 py-2">
-                <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
-                <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
-                <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
-              </div>
-            )}
+              {/* Typing indicator (only when not streaming via ACP) */}
+              {isThinking && !isStreaming && (
+                <div className="flex items-center gap-1 px-1 py-2">
+                  <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
+                  <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
+                  <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
+                </div>
+              )}
 
-            {/* Cancel button during ACP streaming */}
-            {isThinking && isStreaming && (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+              {/* Cancel button during ACP streaming */}
+              {isThinking && isStreaming && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted" />
       </div>

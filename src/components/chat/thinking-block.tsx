@@ -1,17 +1,35 @@
-import { ChevronDown, ChevronRight, Brain, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Brain, Loader2, Clock } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { renderMarkdown } from "./markdown";
+
+// ── Time formatting ──────────────────────────────────────────────────
+
+function formatElapsed(start: Date, end?: Date): string {
+  const ms = (end ?? new Date()).getTime() - start.getTime();
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+  return `${minutes}m ${remaining}s`;
+}
 
 interface ThinkingBlockProps {
   /** The accumulated thinking content */
   content: string;
   /** Whether the model is still streaming thoughts */
   isStreaming?: boolean;
+  /** When thinking started */
+  startedAt?: Date;
+  /** When thinking completed */
+  completedAt?: Date;
 }
 
 export function ThinkingBlock({
   content,
   isStreaming = false,
+  startedAt,
+  completedAt,
 }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(true);
   const [prevIsStreaming, setPrevIsStreaming] = useState(isStreaming);
@@ -64,6 +82,16 @@ export function ThinkingBlock({
           </span>
         ) : (
           <span className="text-muted-foreground">Thoughts</span>
+        )}
+        {startedAt && (
+          <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/60">
+            <Clock className="size-2.5" />
+            {isStreaming
+              ? formatElapsed(startedAt)
+              : completedAt
+                ? formatElapsed(startedAt, completedAt)
+                : formatElapsed(startedAt)}
+          </span>
         )}
       </button>
 
