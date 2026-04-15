@@ -21,8 +21,7 @@ function formatTimestamp(date: Date): string {
   });
 }
 
-function formatElapsed(start: Date, end?: Date): string {
-  const ms = (end ?? new Date()).getTime() - start.getTime();
+function formatElapsed(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
@@ -30,6 +29,31 @@ function formatElapsed(start: Date, end?: Date): string {
   const remaining = Math.floor(seconds % 60);
   return `${minutes}m ${remaining}s`;
 }
+
+/**
+ * Returns the elapsed time in ms between `start` and `end` (or now).
+ * Re-renders every second while `active` is true to keep the display ticking.
+ */
+function useLiveElapsed(
+  start: Date | undefined,
+  end: Date | undefined,
+  active: boolean,
+): number | undefined {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!active || !start) return;
+
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, [active, start]);
+
+  if (!start) return undefined;
+  const endTime = end ?? now;
+  return endTime.getTime() - start.getTime();
+}
+
 import { ToolCallDisplay } from "./tool-call-display";
 import { Button } from "@/components/ui/button";
 import { renderMarkdown } from "./markdown";
@@ -170,6 +194,15 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [isHovered, setIsHovered] = useState(false);
+
+  // Live elapsed time for assistant messages (ticks while streaming)
+  const isResponseActive =
+    !isUser && !!message.isStreaming && !message.completedAt;
+  const responseElapsed = useLiveElapsed(
+    !isUser ? message.timestamp : undefined,
+    message.completedAt,
+    isResponseActive,
+  );
   const [copied, setCopied] = useState(false);
   const [editDraft, setEditDraft] = useState("");
   const [prevIsEditing, setPrevIsEditing] = useState(false);
@@ -422,17 +455,15 @@ export function MessageBubble({
           />
         ))}
       </div>
-      {!message.isStreaming && (
-        <span className="mt-1 flex items-center gap-2 text-[10px] leading-none text-muted-foreground/50">
-          {message.completedAt && (
-            <span className="flex items-center gap-1">
-              <Timer className="size-2.5" />
-              {formatElapsed(message.timestamp, message.completedAt)}
-            </span>
-          )}
-          <span>{formatTimestamp(message.timestamp)}</span>
-        </span>
-      )}
+      <span className="mt-1 flex items-center gap-2 text-[10px] leading-none text-muted-foreground/50">
+        {responseElapsed != null && (
+          <span className="flex items-center gap-1">
+            <Timer className="size-2.5" />
+            {formatElapsed(responseElapsed)}
+          </span>
+        )}
+        <span>{formatTimestamp(message.timestamp)}</span>
+      </span>
     </div>
   );
 }

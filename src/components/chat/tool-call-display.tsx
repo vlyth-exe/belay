@@ -8,7 +8,7 @@ import {
   Clock,
   Timer,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ToolCallInfo } from "./types";
 
 export type { ToolCallInfo };
@@ -23,14 +23,39 @@ function formatTimestamp(date: Date): string {
   });
 }
 
-function formatElapsed(start: Date, end?: Date): string {
-  const ms = (end ?? new Date()).getTime() - start.getTime();
+function formatElapsed(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
   const minutes = Math.floor(seconds / 60);
   const remaining = Math.floor(seconds % 60);
   return `${minutes}m ${remaining}s`;
+}
+
+// ── Live elapsed hook ────────────────────────────────────────────────
+
+/**
+ * Returns the elapsed time in ms between `start` and `end` (or now).
+ * Re-renders every second while `active` is true to keep the display ticking.
+ */
+function useLiveElapsed(
+  start: Date | undefined,
+  end: Date | undefined,
+  active: boolean,
+): number | undefined {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!active || !start) return;
+
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, [active, start]);
+
+  if (!start) return undefined;
+  const endTime = end ?? now;
+  return endTime.getTime() - start.getTime();
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -46,6 +71,14 @@ export function ToolCallDisplay({ toolCall, timestamp }: ToolCallDisplayProps) {
 
   const isDone =
     toolCall.status === "completed" || toolCall.status === "failed";
+
+  const isActive = !isDone && !!toolCall.startedAt;
+
+  const elapsed = useLiveElapsed(
+    toolCall.startedAt,
+    toolCall.completedAt,
+    isActive,
+  );
 
   const statusIcon = {
     pending: (
@@ -74,13 +107,11 @@ export function ToolCallDisplay({ toolCall, timestamp }: ToolCallDisplayProps) {
 
         {/* Right-aligned timing info */}
         <span className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground/60">
-          {/* Elapsed duration from toolCall timing */}
-          {toolCall.startedAt && (
+          {/* Elapsed duration */}
+          {elapsed != null && (
             <span className="flex items-center gap-1">
               <Timer className="size-2.5" />
-              {isDone && toolCall.completedAt
-                ? formatElapsed(toolCall.startedAt, toolCall.completedAt)
-                : formatElapsed(toolCall.startedAt)}
+              {formatElapsed(elapsed)}
             </span>
           )}
 
