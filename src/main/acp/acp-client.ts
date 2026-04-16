@@ -9,6 +9,60 @@ import type {
   WriteTextFileRequest,
 } from "@agentclientprotocol/sdk";
 import type { HarnessConfig } from "./harness-store";
+import { createTerminal as createTerminalImpl, terminalOutput as terminalOutputImpl, waitForTerminalExit as waitForTerminalExitImpl, killTerminal as killTerminalImpl, releaseTerminal as releaseTerminalImpl } from "./client-methods.js";
+import type { CreateTerminalRequest, CreateTerminalResponse, TerminalOutputRequest, TerminalOutputResponse, WaitForTerminalExitRequest, WaitForTerminalExitResponse, KillTerminalRequest, KillTerminalResponse, ReleaseTerminalRequest, ReleaseTerminalResponse, EnvVariable } from "@agentclientprotocol/sdk";
+
+// ── Terminal Handler Wrappers ───────────────────────────────────────────
+/**
+ * Wrap client-methods terminal functions to adapt ACP SDK types.
+ * ACP uses EnvVariable[] for env vars; client-methods uses Record<string, string>.
+ * ACP uses terminalId; client-methods uses id.
+ * ACP response structures differ from client-methods return types.
+ */
+
+function envVariableArrayToRecord(envVars: EnvVariable[] | undefined): Record<string, string> | undefined {
+  if (!envVars) return undefined;
+  const record: Record<string, string> = {};
+  for (const envVar of envVars) {
+    record[envVar.name] = envVar.value;
+  }
+  return record;
+}
+
+async function createTerminal(params: CreateTerminalRequest): Promise<CreateTerminalResponse> {
+  const result = await createTerminalImpl({
+    command: params.command,
+    args: params.args,
+    cwd: params.cwd ?? undefined,
+    env: envVariableArrayToRecord(params.env),
+  });
+  return { terminalId: result.id };
+}
+
+async function terminalOutput(params: TerminalOutputRequest): Promise<TerminalOutputResponse> {
+  const result = await terminalOutputImpl({ id: params.terminalId });
+  return {
+    output: result.output,
+    exitStatus: result.exitStatus ?? undefined,
+    truncated: false,
+  };
+}
+
+async function waitForTerminalExit(params: WaitForTerminalExitRequest): Promise<WaitForTerminalExitResponse> {
+  const result = await waitForTerminalExitImpl({ id: params.terminalId });
+  return {
+    exitCode: result.exitStatus.exitCode,
+    signal: result.exitStatus.signal,
+  };
+}
+
+async function killTerminal(params: KillTerminalRequest): Promise<KillTerminalResponse | void> {
+  await killTerminalImpl({ id: params.terminalId });
+}
+
+async function releaseTerminal(params: ReleaseTerminalRequest): Promise<ReleaseTerminalResponse | void> {
+  await releaseTerminalImpl({ id: params.terminalId });
+}
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -346,6 +400,12 @@ export class AcpClient {
         await fs.writeFile(params.path, params.content, "utf-8");
         return {};
       },
+
+      createTerminal,
+      terminalOutput,
+      waitForTerminalExit,
+      killTerminal,
+      releaseTerminal,
     };
   }
 
