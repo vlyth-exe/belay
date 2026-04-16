@@ -827,36 +827,17 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state]);
 
-  const openProject = useCallback((rawPath: string) => {
-    const id = pathToId(rawPath);
-    const name = pathToName(rawPath);
-
-    // Dispatch with empty sessions — they'll be loaded from disk asynchronously
-    dispatch({
-      type: "OPEN_PROJECT",
-      project: {
-        id,
-        name,
-        path: rawPath,
-        lastOpened: new Date(),
-        sessions: [],
-        activeSessionId: null,
-        groups: [],
-        layout: [],
-      },
-    });
-
-    // Initialize .belay/ storage and load saved state asynchronously
-    (async () => {
+  // Hydrate a single project's sessions/groups/layout from .belay/state.json
+  const hydrateProject = useCallback(
+    async (projectId: string, projectPath: string) => {
       const api = window.electronAPI;
       if (!api) return;
 
       try {
-        await api.storageInit(rawPath);
-        const saved = await api.storageLoadState(rawPath);
+        await api.storageInit(projectPath);
+        const saved = await api.storageLoadState(projectPath);
 
         if (saved) {
-          // Hydrate the project with saved state from disk
           const sessions: ChatSession[] = (saved.sessions ?? []).map((s) => ({
             id: s.id,
             title: s.title,
@@ -879,7 +860,7 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
 
           dispatch({
             type: "HYDRATE_PROJECT",
-            projectId: id,
+            projectId,
             sessions,
             activeSessionId,
             groups,
@@ -888,12 +869,51 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error(
-          `[ProjectStore] Failed to load project state for ${rawPath}:`,
+          `[ProjectStore] Failed to hydrate project ${projectId}:`,
           err,
         );
       }
-    })();
+    },
+    [dispatch],
+  );
+
+  // On mount, hydrate all projects restored from localStorage with empty sessions
+  useEffect(() => {
+    const unhydrated = state.openProjects.filter(
+      (p) => p.sessions.length === 0 && p.groups.length === 0,
+    );
+    for (const project of unhydrated) {
+      hydrateProject(project.id, project.path);
+    }
+    // Run once on mount — state.openProjects is the initial loadState() result
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const openProject = useCallback(
+    (rawPath: string) => {
+      const id = pathToId(rawPath);
+      const name = pathToName(rawPath);
+
+      // Dispatch with empty sessions — they'll be loaded from disk asynchronously
+      dispatch({
+        type: "OPEN_PROJECT",
+        project: {
+          id,
+          name,
+          path: rawPath,
+          lastOpened: new Date(),
+          sessions: [],
+          activeSessionId: null,
+          groups: [],
+          layout: [],
+        },
+      });
+
+      // Initialize .belay/ storage and hydrate saved state asynchronously
+      hydrateProject(id, rawPath);
+    },
+    [hydrateProject],
+  );
 
   const closeProject = useCallback(
     (projectId: string) => {
