@@ -9,6 +9,7 @@ import {
 } from "react";
 import { ArrowUp, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ContextMenu } from "@/components/ui/context-menu";
 import type { AcpAvailableCommand, AcpSessionMode } from "@/types/acp";
 
 interface ChatInputProps {
@@ -82,6 +83,53 @@ export function ChatInput({
   const [prevItemCount, setPrevItemCount] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [hasInputSelection, setHasInputSelection] = useState(false);
+  const [clipboardHasText, setClipboardHasText] = useState(false);
+
+  const handleInputContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const textarea = textareaRef.current;
+    const hasSelection = textarea && textarea.selectionStart !== textarea.selectionEnd;
+    setHasInputSelection(hasSelection ?? false);
+    navigator.clipboard.readText().then((text) => {
+      setClipboardHasText(text && text.length > 0);
+    });
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const handleInputCopy = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start !== end) {
+      const selectedText = textarea.value.slice(start, end);
+      navigator.clipboard.writeText(selectedText);
+    }
+  }, []);
+
+  const handleInputPaste = useCallback(async () => {
+    const text = await navigator.clipboard.readText();
+    if (text && textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newValue = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+      setValue(newValue);
+      const newCursorPos = start + text.length;
+      requestAnimationFrame(() => {
+        textarea.selectionStart = newCursorPos;
+        textarea.selectionEnd = newCursorPos;
+        textarea.focus();
+      });
+    }
+  }, []);
 
   // ── Derive autocomplete state from input + cursor ───────────────
   const menuState: MenuState = useMemo(() => {
@@ -352,6 +400,7 @@ export function ChatInput({
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               onSelect={handleSelect}
+              onContextMenu={handleInputContextMenu}
               disabled={disabled}
               placeholder={dynamicPlaceholder}
               rows={1}
@@ -375,6 +424,17 @@ export function ChatInput({
           </div>
         </div>
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          canCopy={hasInputSelection}
+          canPaste={clipboardHasText}
+          onCopy={handleInputCopy}
+          onPaste={handleInputPaste}
+          onClose={handleCloseContextMenu}
+        />
+      )}
     </div>
   );
 }
