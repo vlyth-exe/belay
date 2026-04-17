@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { ContextMenu } from "@/components/ui/context-menu";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -240,6 +241,9 @@ export function TerminalView({
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
+  const [clipboardHasText, setClipboardHasText] = useState(false);
   // Ref so the PTY-exit handler always calls the latest onClose without
   // adding it to the effect dependency array (which would destroy and
   // recreate every terminal on every render).
@@ -247,6 +251,38 @@ export function TerminalView({
   useEffect(() => {
     onCloseRef.current = onClose;
   });
+
+  const handleCopy = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const selection = terminal.getSelection();
+    if (selection) {
+      navigator.clipboard.writeText(selection);
+    }
+  }, []);
+
+  const handlePaste = useCallback(() => {
+    navigator.clipboard.readText().then((text) => {
+      if (text) {
+        window.electronAPI?.terminalWrite(id, text);
+      }
+    });
+  }, [id]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const terminal = terminalRef.current;
+    const selection = terminal?.getSelection() ?? "";
+    setHasSelection(selection.length > 0);
+    navigator.clipboard.readText().then((text) => {
+      setClipboardHasText(text && text.length > 0);
+    });
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -279,6 +315,35 @@ export function TerminalView({
       }
     });
     resizeObserver.observe(container);
+
+    // ── Keyboard shortcuts (copy/paste) ───────────────────────────
+    // Ctrl+Shift+C = copy selection (Ctrl+C sends SIGINT to shell)
+    // Ctrl+Shift+V = paste from clipboard
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Copy: Ctrl+Shift+C
+      if (event.ctrlKey && event.shiftKey && event.key === "C") {
+        event.preventDefault();
+        const selection = terminal.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection);
+        }
+        return;
+      }
+
+      // Paste: Ctrl+Shift+V
+      if (event.ctrlKey && event.shiftKey && event.key === "V") {
+        event.preventDefault();
+        navigator.clipboard.readText().then((text) => {
+          if (text) {
+            // Send pasted text directly to PTY
+            window.electronAPI?.terminalWrite(id, text);
+          }
+        });
+        return;
+      }
+    };
+
+    container.addEventListener("keydown", handleKeyDown);
 
     // ── Terminal input → PTY ───────────────────────────────────────
     const dataDisposable = terminal.onData((data) => {
@@ -325,6 +390,7 @@ export function TerminalView({
 
     // ── Cleanup ────────────────────────────────────────────────────
     return () => {
+      container.removeEventListener("keydown", handleKeyDown);
       themeObserver.disconnect();
       resizeObserver.disconnect();
       dataDisposable.dispose();
@@ -336,7 +402,25 @@ export function TerminalView({
     };
   }, [id, cwd, spawnOptions]);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  return (
+    <div
+      ref={containerRef}
+      className="h-full w-full"
+      onContextMenu={handleContextMenu}
+    >
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          canCopy={hasSelection}
+          canPaste={clipboardHasText}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
+          onClose={handleCloseContextMenu}
+        />
+      )}
+    </div>
+  );
 }
 
 export default TerminalView;
