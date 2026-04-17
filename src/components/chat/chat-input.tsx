@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ContextMenu } from "@/components/ui/context-menu";
 import type { AcpAvailableCommand } from "@/types/acp";
 import { searchFiles } from "@/lib/file-search";
 
@@ -218,6 +219,25 @@ export function ChatInput({
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const slashDropdownRef = useRef<HTMLDivElement>(null);
 
+  // ── Context menu state ─────────────────────────────────────────
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [hasInputSelection, setHasInputSelection] = useState(false);
+  const [clipboardHasText, setClipboardHasText] = useState(false);
+
+  const handleInputContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const selection = window.getSelection()?.toString() ?? "";
+    setHasInputSelection(selection.length > 0);
+    navigator.clipboard.readText().then((text) => {
+      setClipboardHasText(!!text && text.length > 0);
+    });
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
   const hasSlash = slashCommands.length > 0;
   const hasFiles = !!projectPath;
   let dynamicPlaceholder = placeholder;
@@ -406,6 +426,22 @@ export function ChatInput({
     immediatelyRender: false,
   });
 
+  const handleInputCopy = useCallback(() => {
+    if (!editor) return;
+    const selection = window.getSelection()?.toString() ?? "";
+    if (selection) {
+      navigator.clipboard.writeText(selection);
+    }
+  }, [editor]);
+
+  const handleInputPaste = useCallback(async () => {
+    if (!editor) return;
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      editor.chain().focus().insertContent(text).run();
+    }
+  }, [editor]);
+
   const handleSend = useCallback(() => {
     if (!editor || disabled) return;
 
@@ -525,7 +561,7 @@ export function ChatInput({
         )}
 
         <div className="rounded-lg border border-border/60 bg-muted/30 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/20">
-          <div ref={editorContainerRef} className="relative px-3 pt-2 pb-2">
+          <div ref={editorContainerRef} className="relative px-3 pt-2 pb-2" onContextMenu={handleInputContextMenu}>
             <EditorContent
               editor={editor}
               disabled={disabled}
@@ -548,6 +584,17 @@ export function ChatInput({
             </div>
           </div>
         </div>
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            canCopy={hasInputSelection}
+            canPaste={clipboardHasText}
+            onCopy={handleInputCopy}
+            onPaste={handleInputPaste}
+            onClose={handleCloseContextMenu}
+          />
+        )}
       </div>
     </div>
   );

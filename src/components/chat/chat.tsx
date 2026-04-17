@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { ChevronDown, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
+import { ContextMenu } from "@/components/ui/context-menu";
 import type {
   Message,
   MessageBlock,
@@ -202,6 +203,28 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     undefined,
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Context menu for message area (copy-only) ────────────────
+  const [msgContextMenu, setMsgContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [hasMsgSelection, setHasMsgSelection] = useState(false);
+
+  const handleMsgContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const selection = window.getSelection()?.toString() ?? "";
+    setHasMsgSelection(selection.length > 0);
+    setMsgContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleMsgContextMenuClose = useCallback(() => {
+    setMsgContextMenu(null);
+  }, []);
+
+  const handleMsgCopy = useCallback(() => {
+    const selection = window.getSelection()?.toString() ?? "";
+    if (selection) {
+      navigator.clipboard.writeText(selection);
+    }
+  }, []);
 
   // ── Session status ──────────────────────────────────────────────
   const { setStatus, markSeen } = useSessionStatusWrite();
@@ -1280,7 +1303,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Message list with fade overlay */}
       <div className="relative flex-1 min-h-0">
-        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" onContextMenu={handleMsgContextMenu}>
           <div className="mx-auto max-w-4xl px-4 py-6">
             <div className="space-y-4">
               {messages.map((message) => (
@@ -1327,6 +1350,17 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           </div>
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted" />
+        {msgContextMenu && (
+          <ContextMenu
+            x={msgContextMenu.x}
+            y={msgContextMenu.y}
+            canCopy={hasMsgSelection}
+            canPaste={false}
+            onCopy={handleMsgCopy}
+            onPaste={() => {}}
+            onClose={handleMsgContextMenuClose}
+          />
+        )}
       </div>
 
       {/* Prompt box pinned to bottom */}
