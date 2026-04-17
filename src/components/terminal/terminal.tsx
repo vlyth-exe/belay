@@ -311,13 +311,18 @@ export function TerminalView({
     // ── Terminal resize → PTY ──────────────────────────────────────
     // Register before ResizeObserver so we capture resize events, but
     // skip the first one since PTY is spawned with correct dimensions.
+    // Also guard against zero-dimension resizes when terminal is hidden.
     let initialResizeHandled = false;
     const resizeDisposable = terminal.onResize(() => {
       if (!initialResizeHandled) {
         initialResizeHandled = true;
         return;
       }
-      window.electronAPI?.terminalResize(id, terminal.cols, terminal.rows);
+      // Guard: don't send resize to PTY if dimensions are zero
+      // (happens when terminal is hidden via h-0 overflow-hidden)
+      if (terminal.cols > 0 && terminal.rows > 0) {
+        window.electronAPI?.terminalResize(id, terminal.cols, terminal.rows);
+      }
     });
 
     // ── Spawn the PTY process with initial dimensions ──────────────────
