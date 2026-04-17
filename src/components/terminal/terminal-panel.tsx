@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, Pencil, Trash2 } from "lucide-react";
+import { Plus, X, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TerminalView } from "./terminal";
-import type { TerminalTab } from "@/App";
+import type { TerminalTab, SpawnOptions } from "@/App";
+import {
+  getTerminalProfiles,
+  type TerminalProfile,
+} from "@/lib/app-settings";
 
 // ── Context menu types ──────────────────────────────────────────────
 
@@ -22,10 +26,11 @@ interface TerminalPanelProps {
   tabs: TerminalTab[];
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
-  onAddTab: () => void;
+  onAddTab: (spawnOptions?: SpawnOptions) => void;
   onCloseTab: (tabId: string) => void;
   onRenameTab: (tabId: string, label: string) => void;
   onReorderTabs: (fromIndex: number, toIndex: number) => void;
+  agentSpawnOptions?: SpawnOptions;
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -40,6 +45,7 @@ export function TerminalPanel({
   onCloseTab,
   onRenameTab,
   onReorderTabs,
+  agentSpawnOptions,
 }: TerminalPanelProps) {
   const [height, setHeight] = useState(250);
   const [isDragging, setIsDragging] = useState(false);
@@ -52,10 +58,18 @@ export function TerminalPanel({
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
   const tabBarRef = useRef<HTMLDivElement>(null);
+  const profileDropdownBtnRef = useRef<HTMLButtonElement>(null);
 
   // Drag-and-drop reorder state
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [profileDropdownPos, setProfileDropdownPos] = useState({ x: 0, y: 0 });
+  const [terminalProfiles] = useState<TerminalProfile[]>(getTerminalProfiles);
+
+  const hasDropdownOptions =
+    terminalProfiles.length > 0 || agentSpawnOptions?.isWsl;
 
   // ── Drag-to-resize ─────────────────────────────────────────────────
 
@@ -145,6 +159,20 @@ export function TerminalPanel({
       document.removeEventListener("scroll", dismiss, true);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!profileDropdownOpen) return;
+
+    const dismiss = () => setProfileDropdownOpen(false);
+
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("scroll", dismiss, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("scroll", dismiss, true);
+    };
+  }, [profileDropdownOpen]);
 
   const handleContextRename = useCallback(() => {
     if (!contextMenu) return;
@@ -411,15 +439,33 @@ export function TerminalPanel({
             />
           )}
         </div>
-        <button
-          type="button"
-          onClick={onAddTab}
-          className="ml-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-muted/40 hover:text-foreground"
-          aria-label="Open new terminal"
-          title="Open new terminal"
-        >
-          <Plus className="size-3.5" />
-        </button>
+        <div className="ml-1 flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => onAddTab()}
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-muted/40 hover:text-foreground"
+            aria-label="Open new terminal"
+            title="Open new terminal (default)"
+          >
+            <Plus className="size-3.5" />
+          </button>
+          {hasDropdownOptions && (
+            <button
+              ref={profileDropdownBtnRef}
+              type="button"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setProfileDropdownPos({ x: rect.left, y: rect.bottom + 4 });
+                setProfileDropdownOpen(!profileDropdownOpen);
+              }}
+              className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-muted/40 hover:text-foreground"
+              aria-label="Select terminal profile"
+              title="Select terminal profile"
+            >
+              <ChevronDown className="size-3" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Terminal content — render all tabs, show only the active one */}
@@ -467,6 +513,63 @@ export function TerminalPanel({
               <Trash2 className="size-3" />
               Close
             </button>
+          </div>,
+          document.body,
+        )}
+
+      {profileDropdownOpen &&
+        hasDropdownOptions &&
+        createPortal(
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed z-[9999] min-w-[140px] overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-lg"
+            style={{ left: profileDropdownPos.x, top: profileDropdownPos.y }}
+          >
+            {agentSpawnOptions?.isWsl && (
+              <button
+                type="button"
+                onClick={() => {
+                  onAddTab(agentSpawnOptions);
+                  setProfileDropdownOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+              >
+                WSL
+                {agentSpawnOptions.wslDistro && (
+                  <span className="text-muted-foreground">
+                    ({agentSpawnOptions.wslDistro})
+                  </span>
+                )}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                onAddTab({ isWsl: false });
+                setProfileDropdownOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+            >
+              System Default
+            </button>
+            {terminalProfiles.map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                onClick={() => {
+                  onAddTab({
+                    shell: profile.shell || undefined,
+                    args: profile.args.length > 0 ? profile.args : undefined,
+                    isWsl: profile.isWsl,
+                    wslDistro: profile.wslDistro,
+                  });
+                  setProfileDropdownOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+              >
+                {profile.name}
+              </button>
+            ))}
           </div>,
           document.body,
         )}

@@ -534,8 +534,10 @@ ipcMain.handle(
       isWsl?: boolean;
       wslDistro?: string;
     },
+    cols?: number,
+    rows?: number,
   ) => {
-    terminalManager.spawn(id, cwd, options);
+    terminalManager.spawn(id, cwd, options, cols, rows);
   },
 );
 

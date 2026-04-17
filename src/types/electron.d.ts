@@ -277,6 +277,8 @@ export interface ElectronAPI {
       isWsl?: boolean;
       wslDistro?: string;
     },
+    cols?: number,
+    rows?: number,
   ) => Promise<void>;
   terminalWrite: (id: string, data: string) => void;
   terminalResize: (id: string, cols: number, rows: number) => void;

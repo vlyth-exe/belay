@@ -225,7 +225,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       isWsl?: boolean;
       wslDistro?: string;
     },
-  ) => ipcRenderer.invoke("terminal:spawn", id, cwd, options),
+    cols?: number,
+    rows?: number,
+  ) => ipcRenderer.invoke("terminal:spawn", id, cwd, options, cols, rows),
   terminalWrite: (id: string, data: string) =>
     ipcRenderer.send("terminal:write", id, data),
   terminalResize: (id: string, cols: number, rows: number) =>

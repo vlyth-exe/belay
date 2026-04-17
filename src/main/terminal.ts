@@ -29,7 +29,13 @@ export class TerminalManager {
     this.mainWindow = win;
   }
 
-  spawn(id: string, cwd?: string, options?: SpawnOptions): TerminalInstance {
+  spawn(
+    id: string,
+    cwd?: string,
+    options?: SpawnOptions,
+    cols?: number,
+    rows?: number,
+  ): TerminalInstance {
     const platform = os.platform();
     const isWindows = platform === "win32";
     const useWsl = options?.isWsl || !!options?.wslDistro;
@@ -86,6 +92,8 @@ export class TerminalManager {
       name,
       cwd: effectiveCwd,
       env: process.env as Record<string, string>,
+      cols: cols ?? 80,
+      rows: rows ?? 24,
     });
 
     const instance: TerminalInstance = {
