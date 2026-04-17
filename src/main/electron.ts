@@ -276,16 +276,7 @@ ipcMain.handle("storage:getInfo", async (_event, projectPath: string) => {
   return getStorageInfo(projectPath);
 });
 
-// ── IPC handlers for file system ──────────────────────────────────────
-
-ipcMain.handle("fs:readFile", async (_event, filePath: string) => {
-  try {
-    const content = await fs.promises.readFile(filePath, "utf-8");
-    return content;
-  } catch {
-    return null;
-  }
-});
+// ── IPC handlers for directory explorer ──────────────────────────────
 
 ipcMain.handle(
   "fs:readDir",

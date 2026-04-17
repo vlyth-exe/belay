@@ -181,9 +181,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   acpRespondPermission: (requestId: string, optionId: string) =>
     ipcRenderer.invoke("acp:respondPermission", requestId, optionId),
 
-  // File system
-  fsReadFile: (filePath: string) =>
-    ipcRenderer.invoke("fs:readFile", filePath),
+  // File system - Directory explorer
   fsReadDir: (dirPath: string, showHidden: boolean = false) =>
     ipcRenderer.invoke("fs:readDir", dirPath, showHidden),
 
