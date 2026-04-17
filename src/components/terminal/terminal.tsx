@@ -241,7 +241,10 @@ export function TerminalView({
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const [clipboardHasText, setClipboardHasText] = useState(false);
   // Ref so the PTY-exit handler always calls the latest onClose without
@@ -275,7 +278,7 @@ export function TerminalView({
     const selection = terminal?.getSelection() ?? "";
     setHasSelection(selection.length > 0);
     navigator.clipboard.readText().then((text) => {
-      setClipboardHasText(text && text.length > 0);
+      setClipboardHasText(text.length > 0);
     });
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
@@ -304,6 +307,26 @@ export function TerminalView({
     fitAddon.fit();
 
     terminalRef.current = terminal;
+
+    // ── Terminal resize → PTY ──────────────────────────────────────
+    // Register before ResizeObserver so we capture resize events, but
+    // skip the first one since PTY is spawned with correct dimensions.
+    // Also guard against zero-dimension resizes when terminal is hidden.
+    let initialResizeHandled = false;
+    const resizeDisposable = terminal.onResize(() => {
+      if (!initialResizeHandled) {
+        initialResizeHandled = true;
+        return;
+      }
+      // Guard: don't send resize to PTY if dimensions are zero
+      // (happens when terminal is hidden via h-0 overflow-hidden)
+      if (terminal.cols > 0 && terminal.rows > 0) {
+        window.electronAPI?.terminalResize(id, terminal.cols, terminal.rows);
+      }
+    });
+
+    // ── Spawn the PTY process with initial dimensions ──────────────────
+    window.electronAPI?.terminalSpawn(id, cwd, spawnOptions, terminal.cols, terminal.rows);
 
     // ── Keep terminal sized to its container ───────────────────────
     // Guard: skip fit() when the container is hidden (display: none)
@@ -350,11 +373,6 @@ export function TerminalView({
       window.electronAPI?.terminalWrite(id, data);
     });
 
-    // ── Terminal resize → PTY ──────────────────────────────────────
-    const resizeDisposable = terminal.onResize(() => {
-      window.electronAPI?.terminalResize(id, terminal.cols, terminal.rows);
-    });
-
     // ── PTY output → terminal ──────────────────────────────────────
     const unregisterData = window.electronAPI?.onTerminalData(
       id,
@@ -367,9 +385,6 @@ export function TerminalView({
     const unregisterExit = window.electronAPI?.onTerminalExit(id, () => {
       onCloseRef.current();
     });
-
-    // ── Spawn the PTY process ──────────────────────────────────────
-    window.electronAPI?.terminalSpawn(id, cwd, spawnOptions);
 
     // ── React to theme changes via MutationObserver ────────────────
     //
