@@ -206,7 +206,8 @@ export interface ElectronAPI {
   ) => () => void;
   acpRespondPermission: (requestId: string, optionId: string) => Promise<void>;
 
-  // File system - Directory explorer
+  // File system
+  fsReadFile: (filePath: string) => Promise<string | null>;
   fsReadDir: (dirPath: string, showHidden?: boolean) => Promise<DirEntry[]>;
 
   // Git

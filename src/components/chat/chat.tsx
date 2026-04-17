@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { ChevronDown, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
-import { ContextMenu } from "@/components/ui/context-menu";
 import type {
   Message,
   MessageBlock,
@@ -203,27 +202,6 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     undefined,
   );
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [hasSelection, setHasSelection] = useState(false);
-
-  const handleContextMenuCopy = useCallback(() => {
-    const selection = window.getSelection()?.toString() ?? "";
-    if (selection) {
-      navigator.clipboard.writeText(selection);
-    }
-  }, []);
-
-  const handleChatContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const selection = window.getSelection()?.toString() ?? "";
-    setHasSelection(selection.length > 0);
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  }, []);
-
-  const handleCloseContextMenu = useCallback(() => {
-    setContextMenu(null);
-  }, []);
 
   // ── Session status ──────────────────────────────────────────────
   const { setStatus, markSeen } = useSessionStatusWrite();
@@ -807,53 +785,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     [setMessages],
   );
 
-  // ── Handle mode selection from @ autocomplete ───────────────────
-  const handleModeSelect = useCallback(
-    async (modeId: string) => {
-      if (!agentId || !acpSessionId || modeId === currentModeId) return;
-      setCurrentModeId(modeId);
-      try {
-        await setSessionMode(agentId, acpSessionId, modeId);
-      } catch (err) {
-        console.error("[Chat] Failed to set mode from @ mention:", err);
-      }
-    },
-    [agentId, acpSessionId, currentModeId, setSessionMode],
-  );
-
-  // ── Send a message ───────────────────────────────────────────────
+// ── Send a message ───────────────────────────────────────────────
   const handleSend = useCallback(
     async (content: string) => {
       let trimmed = content.trim();
       if (!trimmed || isThinking) return;
 
-      // ── Parse @mode mentions from the start of the message ──────
-      // Pattern: @ModeName (rest of message). The mode name must match
-      // one of the available modes (case-insensitive on the name or id).
-      let modeSwitched = false;
-      const atMatch = trimmed.match(/^@(\S+)\s*/);
-      if (atMatch && availableModes.length > 0) {
-        const mention = atMatch[1].toLowerCase();
-        const matched = availableModes.find(
-          (m) =>
-            m.name.toLowerCase() === mention || m.id.toLowerCase() === mention,
-        );
-        if (matched) {
-          // Switch mode
-          if (agentId && acpSessionId && matched.id !== currentModeId) {
-            setCurrentModeId(matched.id);
-            setSessionMode(agentId, acpSessionId, matched.id).catch((err) =>
-              console.error("[Chat] Failed to set mode from @ mention:", err),
-            );
-          }
-          modeSwitched = true;
-          // Strip the @mention and its trailing whitespace
-          trimmed = trimmed.slice(atMatch[0].length).trim();
-          if (!trimmed) return; // was only a mode mention, nothing to send
-        }
-      }
-
-      const displayContent = modeSwitched ? content.trim() : trimmed;
+      const displayContent = content.trim();
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -1314,15 +1252,14 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         {/* Agent selector + input pinned to bottom */}
         <div className="bg-muted px-4 pb-3">
           <div className="mx-auto max-w-4xl">
-            <ChatInput
+<ChatInput
               onSend={handleSend}
               disabled={!agentId || isThinking}
               placeholder={
                 agentId ? undefined : "Select an agent to get started…"
               }
               slashCommands={slashCommands}
-              modes={availableModes}
-              onModeSelect={handleModeSelect}
+              projectPath={projectPath}
               controls={
                 <>
                   {agentSelector}
@@ -1343,7 +1280,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Message list with fade overlay */}
       <div className="relative flex-1 min-h-0">
-        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" onContextMenu={handleChatContextMenu}>
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
           <div className="mx-auto max-w-4xl px-4 py-6">
             <div className="space-y-4">
               {messages.map((message) => (
@@ -1390,31 +1327,19 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           </div>
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted" />
-        {contextMenu && (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            canCopy={hasSelection}
-            canPaste={false}
-            onCopy={handleContextMenuCopy}
-            onPaste={() => {}}
-            onClose={handleCloseContextMenu}
-          />
-        )}
       </div>
 
       {/* Prompt box pinned to bottom */}
       <div className="bg-muted px-4 pb-3">
         <div className="mx-auto max-w-4xl">
-          <ChatInput
+<ChatInput
             onSend={handleSend}
             disabled={!agentId || isThinking}
             placeholder={
               agentId ? undefined : "Select an agent to get started…"
             }
             slashCommands={slashCommands}
-            modes={availableModes}
-            onModeSelect={handleModeSelect}
+            projectPath={projectPath}
             controls={
               <>
                 {agentSelector}
